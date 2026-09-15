@@ -30,7 +30,7 @@ var INIT_KEYS=["2025-11-10T11:00:58+0800|415341558|./MESZ5EX3X5 251121P5800|BUY_
 var INIT_MONEY=[{"d":"2026-09-13T03:40:14+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.04},{"d":"2026-09-06T02:59:33+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.03},{"d":"2026-08-30T04:08:32+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.35},{"d":"2026-08-23T04:14:05+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.02},{"d":"2026-08-18T05:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.1},{"d":"2026-08-09T02:07:56+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.01},{"d":"2026-08-02T03:09:37+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.01},{"d":"2026-07-19T03:26:14+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.01},{"d":"2026-07-17T05:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.09},{"d":"2026-07-12T02:22:48+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.01},{"d":"2026-06-17T05:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.11},{"d":"2026-05-19T05:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.11},{"d":"2026-04-17T05:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.09},{"d":"2026-03-17T05:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.08},{"d":"2026-03-15T03:40:22+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.08},{"d":"2026-03-08T04:26:49+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.04},{"d":"2026-03-03T06:00:00+0800","st":"Deposit","desc":"Wire Funds Received","to":313.66},{"d":"2026-03-01T04:07:50+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.07},{"d":"2026-02-18T06:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.11},{"d":"2026-01-17T06:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.06},{"d":"2026-01-13T06:00:00+0800","st":"Deposit","desc":"Wire Funds Received","to":776.29},{"d":"2026-01-06T06:00:00+0800","st":"Deposit","desc":"Wire Funds Received","to":1550.88},{"d":"2026-01-01T06:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.06},{"d":"2025-12-17T06:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.1},{"d":"2025-12-10T06:00:00+0800","st":"Deposit","desc":"Wire Funds Received","to":1539.15},{"d":"2025-11-18T06:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.09},{"d":"2025-11-11T06:00:00+0800","st":"Deposit","desc":"Wire Funds Received","to":767.51},{"d":"2025-10-17T05:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.08},{"d":"2025-09-17T05:00:00+0800","st":"Credit Interest","desc":"INTEREST ON CREDIT BALANCE","to":0.03},{"d":"2025-09-12T05:00:00+0800","st":"Deposit","desc":"Wire Funds Received","to":9960.87},{"d":"2025-09-10T05:00:00+0800","st":"Deposit","desc":"Wire Funds Received","to":1559.89},{"d":"2025-07-27T05:01:27+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.01},{"d":"2025-07-16T05:00:00+0800","st":"Deposit","desc":"Wire Funds Received","to":780.33},{"d":"2025-07-13T03:36:37+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":-0.02},{"d":"2025-06-29T03:41:52+0800","st":"Balance Adjustment","desc":"Regulatory fee adjustment","to":0.0},{"d":"2025-06-24T05:00:00+0800","st":"Deposit","desc":"Commission Rebate Futures","to":1.5},{"d":"2025-05-21T05:00:00+0800","st":"Deposit","desc":"Wire Funds Received","to":1156.45}];
 var GH_BRANCH="main",GH_FILE="data.json",GH_REPO="",GH_PAT="";
 (function(){try{var c=JSON.parse(localStorage.getItem("tt:ghconfig")||"{}");GH_REPO=c.repo||"";GH_PAT=c.pat||"";}catch(e){}})();
-var STORAGE_VER="v9";
+var STORAGE_VER="v10";
 </script>
 <script>
 
@@ -902,67 +902,99 @@ function SectionLabel({label,count,pnl,allSelected,onSelectAll,collapsed,onToggl
 /* ── GitHub setup modal ── */
 function SetupModal({onSave,onSkip}){
   const[repo,setRepo]=React.useState(GH_REPO||'');
-  const[pat,setPat]=React.useState(GH_PAT||'');
+  const[pat,setPat]=React.useState('');
+  const[state,setState]=React.useState('idle'); /* idle|testing|ok|error */
+  const[msg,setMsg]=React.useState('');
 
-  function handleSave(){
-    if(!repo.trim()||!pat.trim())return;
-    localStorage.setItem('tt:ghconfig',JSON.stringify({repo:repo.trim(),pat:pat.trim()}));
-    GH_REPO=repo.trim();GH_PAT=pat.trim();
-    _ghSha=null; /* reset SHA so next save re-fetches */
-    onSave();
+  async function handleSave(){
+    const r=repo.trim(), p=pat.trim();
+    if(!r||!p){setMsg('Both fields are required.');setState('error');return;}
+    setState('testing');setMsg('Checking connection…');
+    try{
+      /* Verify token can read the repo */
+      const res=await fetch('https://api.github.com/repos/'+r+'/contents/data.json',
+        {headers:{'Authorization':'token '+p,'Accept':'application/vnd.github.v3+json'}});
+      if(res.status===401){setState('error');setMsg('Token invalid — check the token and try again.');return;}
+      if(res.status===403){setState('error');setMsg('Token lacks permission — needs Contents: Read & Write.');return;}
+      if(res.status===404){setState('error');setMsg('Repo or data.json not found. Make sure you committed data.json to the repo.');return;}
+      if(!res.ok){setState('error');setMsg('Error '+res.status+' — check the repo name.');return;}
+    }catch(e){setState('error');setMsg('Network error — check your connection.');return;}
+    /* All good — save */
+    localStorage.setItem('tt:ghconfig',JSON.stringify({repo:r,pat:p}));
+    GH_REPO=r; GH_PAT=p; _ghSha=null;
+    setState('ok');setMsg('Connected to '+r);
+    setTimeout(onSave, 800);
   }
 
-  const inp={width:"100%",background:"#0a0a0a",border:"1px solid #2a2a2a",borderRadius:5,
-    padding:"10px 12px",color:"#fff",fontSize:13,outline:"none",fontFamily:"inherit",
-    boxSizing:"border-box"};
+  const inp={width:"100%",background:"#0a0a0a",border:"1px solid "+(state==='error'?'#7f1d1d':'#2a2a2a'),
+    borderRadius:5,padding:"10px 12px",color:"#fff",fontSize:13,outline:"none",
+    fontFamily:"inherit",boxSizing:"border-box"};
+  const isTesting=state==='testing';
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",display:"flex",
       alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
       <div style={{background:"#111",border:"1px solid #222",borderRadius:10,
         padding:"28px 28px 22px",width:"100%",maxWidth:420}}>
         <div style={{fontSize:16,fontWeight:700,color:"#fff",marginBottom:6}}>GitHub Sync</div>
         <div style={{fontSize:13,color:"#666",marginBottom:22,lineHeight:1.6}}>
-          Strategy labels sync to <code style={{color:"#aaa"}}>data.json</code> in your repo.
-          Token stays in this browser only.
+          Strategy overrides sync to <code style={{color:"#aaa",background:"#0a0a0a",padding:"1px 5px",borderRadius:3}}>data.json</code> in your repo.
+          Token stored in this browser only.
         </div>
         <div style={{marginBottom:14}}>
-          <div style={{fontSize:11,color:"#888",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>GitHub Repo</div>
-          <input value={repo} onChange={e=>setRepo(e.target.value)}
+          <div style={{fontSize:11,color:"#888",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+            GitHub Repo
+          </div>
+          <input value={repo} onChange={e=>setRepo(e.target.value)} disabled={isTesting}
             placeholder="username/trading-journal" style={inp}/>
         </div>
-        <div style={{marginBottom:22}}>
-          <div style={{fontSize:11,color:"#888",marginBottom:5,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:5,display:"flex",
+            alignItems:"center",justifyContent:"space-between"}}>
             <span style={{textTransform:"uppercase",letterSpacing:"0.06em"}}>Personal Access Token</span>
             <a href="https://github.com/settings/personal-access-tokens/new" target="_blank"
               style={{color:"#555",fontSize:10,textDecoration:"none"}}>Create one ↗</a>
           </div>
           <input value={pat} onChange={e=>setPat(e.target.value)} type="password"
-            placeholder="ghp_xxxxxxxxxxxx" style={inp}/>
-          <div style={{fontSize:11,color:"#555",marginTop:5}}>Contents: Read & Write · this repo only</div>
+            disabled={isTesting} placeholder="ghp_xxxxxxxxxxxx" style={inp}/>
+          <div style={{fontSize:11,color:"#555",marginTop:5}}>
+            Fine-grained token · Contents: Read &amp; Write · this repo only
+          </div>
         </div>
+
+        {/* Status message */}
+        {msg&&(
+          <div style={{fontSize:12,padding:"9px 12px",borderRadius:5,marginBottom:14,
+            background:state==='ok'?"rgba(34,197,94,0.1)":state==='error'?"rgba(239,68,68,0.1)":"rgba(251,191,36,0.1)",
+            border:"1px solid "+(state==='ok'?"rgba(34,197,94,0.3)":state==='error'?"rgba(239,68,68,0.3)":"rgba(251,191,36,0.3)"),
+            color:state==='ok'?"#4ade80":state==='error'?"#f87171":"#fbbf24"}}>
+            {state==='ok'?"✓ ":state==='error'?"✗ ":"⋯ "}{msg}
+          </div>
+        )}
+
         <div style={{display:"flex",gap:10}}>
-          <button onClick={handleSave}
-            style={{flex:1,background:"#fff",color:"#000",border:"none",borderRadius:5,
-              padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-            Save
+          <button onClick={handleSave} disabled={isTesting}
+            style={{flex:1,background:state==='ok'?"#14532d":"#fff",
+              color:state==='ok'?"#4ade80":"#000",border:"none",borderRadius:5,
+              padding:"11px",fontSize:13,fontWeight:700,cursor:isTesting?"default":"pointer",
+              fontFamily:"inherit",opacity:isTesting?0.7:1}}>
+            {isTesting?"Checking…":state==='ok'?"Connected ✓":"Save & Connect"}
           </button>
-          <button onClick={onSkip}
-            style={{background:"transparent",color:"#555",border:"1px solid #222",borderRadius:5,
-              padding:"11px 18px",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+          <button onClick={onSkip} disabled={isTesting}
+            style={{background:"transparent",color:"#555",border:"1px solid #222",
+              borderRadius:5,padding:"11px 18px",fontSize:13,cursor:"pointer",
+              fontFamily:"inherit"}}>
             Skip
           </button>
         </div>
-        {GH_REPO&&<div style={{fontSize:11,color:"#4ade80",marginTop:14,textAlign:"center"}}>
-          Currently: {GH_REPO}
-        </div>}
-        <div style={{fontSize:11,color:"#333",marginTop:8,textAlign:"center"}}>
-          Stored in this browser's localStorage only
+        <div style={{fontSize:11,color:"#333",marginTop:12,textAlign:"center"}}>
+          Token never leaves this browser
         </div>
       </div>
     </div>
   );
 }
+
 
 /* ── App ── */
 function App(){
