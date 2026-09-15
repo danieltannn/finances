@@ -1001,6 +1001,7 @@ function App(){
   const isMobile=useIsMobile();
   const[rows,setRows]=React.useState([]);
   const[showSetup,setShowSetup]=React.useState(false);
+  const[syncSt,setSyncSt]=React.useState('');
   const[keys,setKeys]=React.useState(new Set());
   const[over,setOver]=React.useState({});
   const[page,setPage]=React.useState("dashboard");
