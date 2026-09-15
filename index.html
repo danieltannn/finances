@@ -981,16 +981,24 @@ function App(){
 
   const showToast=React.useCallback((msg,type)=>{setToast({msg,type});setTimeout(()=>setToast(null),4000);},[]);
   const handleUpload=React.useCallback(async(file)=>{
+    let _added=0,_newRows=[],_newKeys=keys;
     try{
-      const text=await file.text();const nr=parseCSV(text);
+      const text=await file.text();
+      const nr=parseCSV(text);
       const{added,newKeys}=dedupeNewRows(nr,[...keys]);
       if(!added.length){showToast("No new transactions — already imported.","info");return;}
-      const updated=[...rows,...added];setRows(updated);setKeys(newKeys);
-      const extraR=updated.slice(INIT_ROWS.length);
-      const extraK=[...newKeys].filter(k=>!new Set(INIT_KEYS).has(k));
+      _added=added.length;_newRows=added;_newKeys=newKeys;
+      setRows([...rows,...added]);setKeys(newKeys);
+      showToast(_added+" new transaction"+(_added!==1?"s":"")+" added.","success");
+    }catch(e){showToast("Import failed — check file format.","error");return;}
+    /* Storage save in its own try/catch — never affects the success message above */
+    try{
+      const initKS=new Set(INIT_KEYS);
+      const allRows=[...rows,..._newRows];
+      const extraR=allRows.slice(INIT_ROWS.length);
+      const extraK=[..._newKeys].filter(k=>!initKS.has(k));
       storage.save({overrides:over,rows:extraR,keys:extraK});
-      showToast("Added "+added.length+" new transaction"+(added.length!==1?"s":"")+".","success");
-    }catch(e){showToast("Import failed.","error");}
+    }catch(e){console.warn("Save error:",e);}
   },[rows,keys,showToast]);
   const handleStrategyChange=React.useCallback(async(pid,strat)=>{
     const updated=Object.assign({},over,{[pid]:strat});setOver(updated);
