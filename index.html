@@ -34,10 +34,35 @@ var STORAGE_VER="v9";
 </script>
 <script>
 
+var _ghSha=null,_ghTimer=null;
 var storage={
-  get:function(k){try{var v=localStorage.getItem(k);return Promise.resolve(v?{value:v}:null);}catch(e){return Promise.resolve(null);}},
-  set:function(k,v){try{localStorage.setItem(k,v);}catch(e){}return Promise.resolve();},
-  del:function(k){try{localStorage.removeItem(k);}catch(e){}return Promise.resolve();}
+  load:async function(){
+    if(GH_REPO&&GH_PAT){
+      try{
+        var r=await fetch('https://raw.githubusercontent.com/'+GH_REPO+'/main/'+GH_FILE+'?t='+Date.now());
+        if(r.ok)return await r.json();
+      }catch(e){}
+    }
+    try{var s=localStorage.getItem('tt:data');return s?JSON.parse(s):null;}catch(e){return null;}
+  },
+  save:function(payload,cb){
+    try{localStorage.setItem('tt:data',JSON.stringify(payload));}catch(e){}
+    if(cb)cb('saving');
+    if(!GH_REPO||!GH_PAT){if(cb)cb('local');return;}
+    clearTimeout(_ghTimer);
+    _ghTimer=setTimeout(async function(){
+      try{
+        var api='https://api.github.com/repos/'+GH_REPO+'/contents/'+GH_FILE;
+        var h={'Authorization':'token '+GH_PAT,'Content-Type':'application/json'};
+        if(!_ghSha){var g=await fetch(api,{headers:h});if(g.ok){_ghSha=(await g.json()).sha;}}
+        var body={message:'sync',content:btoa(unescape(encodeURIComponent(JSON.stringify(payload)))),branch:'main'};
+        if(_ghSha)body.sha=_ghSha;
+        var p=await fetch(api,{method:'PUT',headers:h,body:JSON.stringify(body)});
+        if(p.ok){_ghSha=(await p.json()).content.sha;if(cb)cb('synced');}
+        else{_ghSha=null;if(cb)cb('error '+p.status);}
+      }catch(e){if(cb)cb('error');}
+    },1500);
+  }
 };
 function parseCSVLine(line){
   var out=[],cur="",inQ=false;
@@ -877,63 +902,61 @@ function SectionLabel({label,count,pnl,allSelected,onSelectAll,collapsed,onToggl
 /* ── GitHub setup modal ── */
 function SetupModal({onSave,onSkip}){
   const[repo,setRepo]=React.useState(GH_REPO||'');
-  const[pat,setPat]=React.useState('');
-  const[testing,setTesting]=React.useState(false);
-  const[err,setErr]=React.useState('');
-  async function save(){
-    if(!repo.trim()||!pat.trim()){setErr('Both fields are required.');return;}
-    setTesting(true);setErr('');
-    try{
-      const r=await fetch('https://api.github.com/repos/'+repo.trim()+'/contents/'+GH_FILE,
-        {headers:{'Authorization':'token '+pat.trim()}});
-      if(r.status===401){setErr('Token invalid — check it.');setTesting(false);return;}
-      if(r.status===404){setErr('Repo or data.json not found — make sure you pushed both files.');setTesting(false);return;}
-    }catch(e){setErr('Network error — check connection.');setTesting(false);return;}
+  const[pat,setPat]=React.useState(GH_PAT||'');
+
+  function handleSave(){
+    if(!repo.trim()||!pat.trim())return;
     localStorage.setItem('tt:ghconfig',JSON.stringify({repo:repo.trim(),pat:pat.trim()}));
     GH_REPO=repo.trim();GH_PAT=pat.trim();
+    _ghSha=null; /* reset SHA so next save re-fetches */
     onSave();
   }
+
   const inp={width:"100%",background:"#0a0a0a",border:"1px solid #2a2a2a",borderRadius:5,
-    padding:"9px 12px",color:"#fff",fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
+    padding:"10px 12px",color:"#fff",fontSize:13,outline:"none",fontFamily:"inherit",
+    boxSizing:"border-box"};
+
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",
       alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
       <div style={{background:"#111",border:"1px solid #222",borderRadius:10,
         padding:"28px 28px 22px",width:"100%",maxWidth:420}}>
-        <div style={{fontSize:16,fontWeight:700,color:"#fff",marginBottom:6}}>Connect GitHub Sync</div>
+        <div style={{fontSize:16,fontWeight:700,color:"#fff",marginBottom:6}}>GitHub Sync</div>
         <div style={{fontSize:13,color:"#666",marginBottom:22,lineHeight:1.6}}>
-          Your strategy labels sync to <code style={{color:"#aaa"}}>data.json</code> in your repo.
-          Token is stored in this browser only — never in your code.
+          Strategy labels sync to <code style={{color:"#aaa"}}>data.json</code> in your repo.
+          Token stays in this browser only.
         </div>
         <div style={{marginBottom:14}}>
           <div style={{fontSize:11,color:"#888",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>GitHub Repo</div>
-          <input value={repo} onChange={e=>setRepo(e.target.value)} placeholder="username/trading-journal" style={inp}/>
+          <input value={repo} onChange={e=>setRepo(e.target.value)}
+            placeholder="username/trading-journal" style={inp}/>
         </div>
-        <div style={{marginBottom:20}}>
-          <div style={{fontSize:11,color:"#888",marginBottom:5,display:"flex",alignItems:"center",gap:8}}>
+        <div style={{marginBottom:22}}>
+          <div style={{fontSize:11,color:"#888",marginBottom:5,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <span style={{textTransform:"uppercase",letterSpacing:"0.06em"}}>Personal Access Token</span>
             <a href="https://github.com/settings/personal-access-tokens/new" target="_blank"
               style={{color:"#555",fontSize:10,textDecoration:"none"}}>Create one ↗</a>
           </div>
           <input value={pat} onChange={e=>setPat(e.target.value)} type="password"
             placeholder="ghp_xxxxxxxxxxxx" style={inp}/>
-          <div style={{fontSize:11,color:"#555",marginTop:5}}>Fine-grained token · Contents: Read & Write · this repo only</div>
+          <div style={{fontSize:11,color:"#555",marginTop:5}}>Contents: Read & Write · this repo only</div>
         </div>
-        {err&&<div style={{fontSize:12,color:"#f87171",background:"rgba(239,68,68,0.08)",
-          border:"1px solid rgba(239,68,68,0.2)",borderRadius:5,padding:"8px 12px",marginBottom:14}}>{err}</div>}
         <div style={{display:"flex",gap:10}}>
-          <button onClick={save} disabled={testing}
+          <button onClick={handleSave}
             style={{flex:1,background:"#fff",color:"#000",border:"none",borderRadius:5,
-              padding:"10px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:testing?0.6:1}}>
-            {testing?"Checking…":"Save & Connect"}
+              padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            Save
           </button>
           <button onClick={onSkip}
             style={{background:"transparent",color:"#555",border:"1px solid #222",borderRadius:5,
-              padding:"10px 16px",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+              padding:"11px 18px",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
             Skip
           </button>
         </div>
-        <div style={{fontSize:11,color:"#333",marginTop:14,textAlign:"center"}}>
+        {GH_REPO&&<div style={{fontSize:11,color:"#4ade80",marginTop:14,textAlign:"center"}}>
+          Currently: {GH_REPO}
+        </div>}
+        <div style={{fontSize:11,color:"#333",marginTop:8,textAlign:"center"}}>
           Stored in this browser's localStorage only
         </div>
       </div>
@@ -997,12 +1020,12 @@ function App(){
       const allRows=[...rows,..._newRows];
       const extraR=allRows.slice(INIT_ROWS.length);
       const extraK=[..._newKeys].filter(k=>!initKS.has(k));
-      storage.save({overrides:over,rows:extraR,keys:extraK});
+      storage.save({overrides:over,rows:extraR,keys:extraK},setSyncSt);
     }catch(e){console.warn("Save error:",e);}
   },[rows,keys,showToast]);
   const handleStrategyChange=React.useCallback(async(pid,strat)=>{
     const updated=Object.assign({},over,{[pid]:strat});setOver(updated);
-    try{storage.save({overrides:updated,rows:rows.slice(INIT_ROWS.length),keys:[...keys].filter(k=>!new Set(INIT_KEYS).has(k))});}catch(e){}
+    try{storage.save({overrides:updated,rows:rows.slice(INIT_ROWS.length),keys:[...keys].filter(k=>!new Set(INIT_KEYS).has(k))},setSyncSt);}catch(e){}
   },[over]);
   const toggleExpand=React.useCallback(id=>{setExpIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});},[]);
   const toggleSelect=React.useCallback(id=>{setSelectedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});},[]);
@@ -1015,7 +1038,7 @@ function App(){
     const updated=Object.assign({},over);
     selectedIds.forEach(pid=>{updated[pid]=strat;});
     setOver(updated);setSelectedIds(new Set());
-    try{storage.save({overrides:updated,rows:rows.slice(INIT_ROWS.length),keys:[...keys].filter(k=>!new Set(INIT_KEYS).has(k))});}catch(e){}
+    try{storage.save({overrides:updated,rows:rows.slice(INIT_ROWS.length),keys:[...keys].filter(k=>!new Set(INIT_KEYS).has(k))},setSyncSt);}catch(e){}
     showToast(count+" position"+(count!==1?"s":"")+" moved to "+(SMAP[strat]||SMAP.misc).label+".","success");
   },[selectedIds,over,showToast]);
 
@@ -1072,10 +1095,12 @@ function App(){
                     onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
                 </label>
                 <button onClick={()=>setShowSetup(true)}
-                  title={GH_REPO?"Sync: "+GH_REPO:"Set up sync"}
-                  style={{background:"transparent",border:"1px solid "+(GH_REPO?"#1e3a2a":"#222"),
-                    color:syncSt==="synced"?"#4ade80":syncSt==="saving"?"#fbbf24":syncSt==="error"?"#f87171":GH_REPO?"#4ade80":"#444",borderRadius:4,padding:"8px 10px",
-                    cursor:"pointer",fontSize:15,flexShrink:0}}>{syncSt==="saving"?"↻":"⇆"}</button>
+                style={{background:"transparent",border:"1px solid #1a1a1a",borderRadius:4,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                <span style={{fontSize:13,color:syncSt==="synced"?"#4ade80":syncSt==="saving"?"#fbbf24":syncSt.startsWith("error")?"#f87171":GH_REPO?"#4ade80":"#555"}}>⇆</span>
+                <span style={{fontSize:11,color:syncSt==="synced"?"#4ade80":syncSt==="saving"?"#fbbf24":syncSt.startsWith("error")?"#f87171":GH_REPO?"#4ade80":"#444"}}>
+                  {syncSt||( GH_REPO?"connected":"sync")}
+                </span>
+              </button>
               </div>
               <div style={{display:"flex",gap:6,paddingBottom:12}}>
                 <button style={navBtn(page==="dashboard")} onClick={()=>{setPage("dashboard");clearSelection();}}>Dashboard</button>
@@ -1116,10 +1141,12 @@ function App(){
                     onChange={e=>{if(e.target.files[0])handleUpload(e.target.files[0]);e.target.value="";}}/>
                 </label>
               <button onClick={()=>setShowSetup(true)}
-                title={GH_REPO?"Syncing: "+GH_REPO:"Set up GitHub sync"}
-                style={{background:"transparent",border:"1px solid "+(GH_REPO?"#1e3a2a":"#222"),
-                  color:GH_REPO?"#4ade80":"#444",borderRadius:4,padding:"8px 10px",
-                  cursor:"pointer",fontSize:15,flexShrink:0}}>⇆</button>
+                style={{background:"transparent",border:"1px solid #1a1a1a",borderRadius:4,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                <span style={{fontSize:13,color:syncSt==="synced"?"#4ade80":syncSt==="saving"?"#fbbf24":syncSt.startsWith("error")?"#f87171":GH_REPO?"#4ade80":"#555"}}>⇆</span>
+                <span style={{fontSize:11,color:syncSt==="synced"?"#4ade80":syncSt==="saving"?"#fbbf24":syncSt.startsWith("error")?"#f87171":GH_REPO?"#4ade80":"#444"}}>
+                  {syncSt||( GH_REPO?"connected":"sync")}
+                </span>
+              </button>
               </div>
             </div>
           )}
