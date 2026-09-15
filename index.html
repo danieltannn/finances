@@ -1074,8 +1074,8 @@ function App(){
                 <button onClick={()=>setShowSetup(true)}
                   title={GH_REPO?"Sync: "+GH_REPO:"Set up sync"}
                   style={{background:"transparent",border:"1px solid "+(GH_REPO?"#1e3a2a":"#222"),
-                    color:GH_REPO?"#4ade80":"#444",borderRadius:4,padding:"8px 10px",
-                    cursor:"pointer",fontSize:15,flexShrink:0}}>⇆</button>
+                    color:syncSt==="synced"?"#4ade80":syncSt==="saving"?"#fbbf24":syncSt==="error"?"#f87171":GH_REPO?"#4ade80":"#444",borderRadius:4,padding:"8px 10px",
+                    cursor:"pointer",fontSize:15,flexShrink:0}}>{syncSt==="saving"?"↻":"⇆"}</button>
               </div>
               <div style={{display:"flex",gap:6,paddingBottom:12}}>
                 <button style={navBtn(page==="dashboard")} onClick={()=>{setPage("dashboard");clearSelection();}}>Dashboard</button>
