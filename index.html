@@ -964,6 +964,53 @@ function PreCheck({txMap,positions,onAccept,onAcceptAll,onReject}){
   </div>;
 }
 
+function PositionsPanel({positions,txMap,editPosition,deletePosition,onStrategyChange,onNameChange}){
+  const[closedExp,setClosedExp]=React.useState(false);
+  const open=positions.filter(p=>isOpen(p,txMap));
+  const closed=positions.filter(p=>!isOpen(p,txMap));
+
+  const renderCard=pos=>{
+    const op=isOpen(pos,txMap);
+    const pnl=posPnL(pos,txMap);
+    const{open:od,close:cd}=posDates(pos,txMap);
+    const dit=posDIT(pos,txMap);
+    const s=SMAP[pos.strategy]||SMAP.misc;
+    return <PosCard key={pos.id} pos={pos} txMap={txMap} open={op} pnl={pnl} openDate={od} closeDate={cd} dit={dit} strat={s}
+      onEdit={()=>editPosition(pos)} onDelete={()=>deletePosition(pos.id)}
+      onStrategyChange={strat=>onStrategyChange(pos,strat)}
+      onNameChange={name=>onNameChange(pos,name)}/>;
+  };
+
+  const SectionHeader=({label,count,pnl,collapsible,collapsed,onToggle})=>(
+    <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'1px solid #1a1a1a',marginBottom:8,
+      cursor:collapsible?'pointer':'default',userSelect:'none'}} onClick={collapsible?onToggle:undefined}>
+      {collapsible&&<span style={{fontSize:9,color:'#444',display:'inline-block',transition:'transform 0.15s',
+        transform:collapsed?'rotate(-90deg)':'rotate(0deg)'}}>▼</span>}
+      <span style={{fontSize:11,color:'#666',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>{label}</span>
+      <span style={{fontSize:11,color:'#444',background:'#161616',padding:'1px 7px',borderRadius:10}}>{count}</span>
+      {pnl!==undefined&&<span style={{marginLeft:'auto',fontFamily:'monospace',fontWeight:700,fontSize:13,
+        color:pnl>=0?'#4ade80':'#f87171'}}>{fmtPnL(pnl)}</span>}
+    </div>
+  );
+
+  if(positions.length===0)return <div style={{textAlign:'center',color:'#444',padding:'60px 0'}}>
+    <div style={{fontSize:15,marginBottom:8}}>No positions yet</div>
+    <div style={{fontSize:13}}>Go to ⚡ Pre-Check to auto-detect, or Transactions to map manually</div>
+  </div>;
+
+  return <div>
+    {open.length>0&&<>
+      <SectionHeader label="Open" count={open.length} pnl={open.reduce((a,p)=>a+posPnL(p,txMap),0)}/>
+      <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>{open.map(renderCard)}</div>
+    </>}
+    {closed.length>0&&<>
+      <SectionHeader label="Closed" count={closed.length} pnl={closed.reduce((a,p)=>a+posPnL(p,txMap),0)}
+        collapsible={true} collapsed={!closedExp} onToggle={()=>setClosedExp(e=>!e)}/>
+      {closedExp&&<div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>{closed.map(renderCard)}</div>}
+    </>}
+  </div>;
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
