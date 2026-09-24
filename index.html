@@ -683,57 +683,17 @@ function App(){
 
     {/* ── Positions View ── */}
     {view==='positions'&&<div style={{maxWidth:1300,margin:'0 auto',padding:16}}>
-      <div style={{display:'flex',gap:10,marginBottom:16,alignItems:'center'}}>
-        <div style={{color:'#555',fontSize:13}}>{positions.length} positions · {assignedKeys.size} transactions assigned · {txns.length-assignedKeys.size} unassigned</div>
+      <div style={{display:'flex',gap:10,marginBottom:16,alignItems:'center',flexWrap:'wrap'}}>
+        <div style={{color:'#555',fontSize:13}}>{positions.length} positions · {assignedKeys.size} assigned · {txns.length-assignedKeys.size} unassigned</div>
         {txns.length-assignedKeys.size>0&&<button onClick={()=>{setView('transactions');setFilter('unassigned');}}
           style={{background:'transparent',border:'1px solid #fbbf2444',color:'#fbbf24',borderRadius:4,padding:'5px 12px',fontSize:12}}>
           View {txns.length-assignedKeys.size} unassigned ↗
         </button>}
       </div>
-      {positions.length===0&&<div style={{textAlign:'center',color:'#444',padding:'60px 0'}}>
-        <div style={{fontSize:15,marginBottom:8}}>No positions yet</div>
-        <div style={{fontSize:13}}>Go to Transactions → select rows → Create Position</div>
-      </div>}
-      {(()=>{
-        const open=positions.filter(p=>isOpen(p,txMap));
-        const closed=positions.filter(p=>!isOpen(p,txMap));
-        const[closedExp,setClosedExp]=React.useState(false);
-        const renderCard=pos=>{
-          const op=isOpen(pos,txMap);
-          const pnl=posPnL(pos,txMap);
-          const{open:od,close:cd}=posDates(pos,txMap);
-          const dit=posDIT(pos,txMap);
-          const s=SMAP[pos.strategy]||SMAP.misc;
-          return <PosCard key={pos.id} pos={pos} txMap={txMap} open={op} pnl={pnl} openDate={od} closeDate={cd} dit={dit} strat={s}
-            onEdit={()=>editPosition(pos)} onDelete={()=>deletePosition(pos.id)}
-            onStrategyChange={strat=>{const np=positions.map(p=>p.id===pos.id?{...p,strategy:strat}:p);setPositions(np);saveAll(txns,txnKeys,np);}}
-            onNameChange={name=>{const np=positions.map(p=>p.id===pos.id?{...p,name}:p);setPositions(np);saveAll(txns,txnKeys,np);}}/>;
-        };
-        const SectionHeader=({label,count,pnl,collapsible,collapsed,onToggle})=>(
-          <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'1px solid #1a1a1a',marginBottom:8,cursor:collapsible?'pointer':'default',userSelect:'none'}}
-            onClick={collapsible?onToggle:undefined}>
-            {collapsible&&<span style={{fontSize:9,color:'#444',transform:collapsed?'rotate(-90deg)':'rotate(0deg)',display:'inline-block',transition:'transform 0.15s'}}>▼</span>}
-            <span style={{fontSize:11,color:'#666',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>{label}</span>
-            <span style={{fontSize:11,color:'#444',background:'#161616',padding:'1px 7px',borderRadius:10}}>{count}</span>
-            {pnl!==undefined&&<span style={{marginLeft:'auto',fontFamily:'monospace',fontWeight:700,fontSize:13,color:pnl>=0?'#4ade80':'#f87171'}}>{fmtPnL(pnl)}</span>}
-          </div>
-        );
-        return <div style={{display:'flex',flexDirection:'column',gap:0}}>
-          {open.length>0&&<>
-            <SectionHeader label="Open" count={open.length} pnl={open.reduce((a,p)=>a+posPnL(p,txMap),0)}/>
-            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>
-              {open.map(renderCard)}
-            </div>
-          </>}
-          {closed.length>0&&<>
-            <SectionHeader label="Closed" count={closed.length} pnl={closed.reduce((a,p)=>a+posPnL(p,txMap),0)}
-              collapsible={true} collapsed={!closedExp} onToggle={()=>setClosedExp(e=>!e)}/>
-            {closedExp&&<div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>
-              {closed.map(renderCard)}
-            </div>}
-          </>}
-        </div>;
-      })()}
+      <PositionsPanel positions={positions} txMap={txMap}
+        editPosition={editPosition} deletePosition={deletePosition}
+        onStrategyChange={(pos,strat)=>{const np=positions.map(p=>p.id===pos.id?{...p,strategy:strat}:p);setPositions(np);saveAll(txns,txnKeys,np);}}
+        onNameChange={(pos,name)=>{const np=positions.map(p=>p.id===pos.id?{...p,name}:p);setPositions(np);saveAll(txns,txnKeys,np);}}/>
     </div>}
 
     {/* ── Dashboard View ── */}
