@@ -452,8 +452,17 @@ function App(){
     (async()=>{
       const d=await store.load();
       if(d?.transactions?.length){
-        setTxns(d.transactions);setTxnKeys(d.txnKeys||d.transactions.map(txnKey));
-        setPositions(d.positions||[]);
+        /* Always regenerate keys with current txnKey fn (includes `to`)
+           so split fills with same symbol/order but different fees get unique keys.
+           Migrate any saved position references from old format → new format. */
+        const freshKeys=d.transactions.map(txnKey);
+        const oldKeys=d.txnKeys||d.transactions.map(r=>[r.d?.slice(0,16),r.oi||'',r.sy,r.ac,r.q].join('|'));
+        const keyMigration={};
+        oldKeys.forEach((ok,i)=>{if(!keyMigration[ok])keyMigration[ok]=freshKeys[i];});
+        const migratedPositions=(d.positions||[]).map(p=>({
+          ...p,txnKeys:p.txnKeys.map(k=>keyMigration[k]||k)
+        }));
+        setTxns(d.transactions);setTxnKeys(freshKeys);setPositions(migratedPositions);
       }else{
         const keys=INIT_ROWS.map(txnKey);
         setTxns(INIT_ROWS);setTxnKeys(keys);setPositions([]);
