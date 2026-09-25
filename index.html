@@ -1,4 +1,13 @@
-<!DOCTYPE html>
+const filteredIdxs=React.useMemo(()=>{
+    return txns.map((_,i)=>i).filter(i=>{
+      const t=txns[i];const k=txnKeys[i];if(!t)return false;
+      if(filter==='assigned'&&!assignedKeys.has(k))return false;
+      if(filter==='unassigned'&&assignedKeys.has(k))return false;
+      if(search){const q=search.toLowerCase();
+        if(!t.sy?.toLowerCase().includes(q)&&!t.us?.toLowerCase().includes(q)&&!(t.oi||'').includes(q))return false;}
+      return true;
+    });
+  },[txnKeys,txns,filter,search,assignedKeys]);<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -593,7 +602,7 @@ function App(){
   }
 
   /* Selection */
-  const toggleSelect=k=>setSelected(prev=>{const n=new Set(prev);n.has(k)?n.delete(k):n.add(k);return n;});
+  const toggleSelect=i=>setSelected(prev=>{const n=new Set(prev);n.has(i)?n.delete(i):n.add(i);return n;});
   const toggleAll=()=>{
     if(selected.size===filteredTxns.length)setSelected(new Set());
     else setSelected(new Set(filteredTxns));
@@ -651,10 +660,10 @@ function App(){
             <button key={v} onClick={()=>setFilter(v)} style={{padding:'7px 12px',background:filter===v?'#fff':'transparent',color:filter===v?'#000':'#666',border:'none',fontSize:12,borderRight:'1px solid #1e1e1e'}}>{l}</button>
           ))}
         </div>
-        <div style={{color:'#555',fontSize:12,marginLeft:4}}>{filteredTxns.length} rows · {txns.length} total</div>
+        <div style={{color:'#555',fontSize:12,marginLeft:4}}>{filteredIdxs.length} rows · {txns.length} total</div>
         {selected.size>0&&<div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
           <span style={{fontSize:13,color:'#fff',fontWeight:600}}>{selected.size} selected</span>
-          <button onClick={()=>setShowModal({txnKeys:[...selected],existing:null})}
+          <button onClick={()=>setShowModal({txnKeys:[...selected].map(i=>txnKeys[i]),existing:null})}
             style={{background:'#fff',color:'#000',border:'none',borderRadius:4,padding:'7px 16px',fontSize:13,fontWeight:700}}>
             Create Position
           </button>
@@ -667,68 +676,63 @@ function App(){
 
       {/* Split table: Opens on left, Closes on right */}
       {(()=>{
-        const opens=filteredTxns.filter(k=>txMap[k]?.ac?.includes('_TO_OPEN'));
-        const closes=filteredTxns.filter(k=>!txMap[k]?.ac?.includes('_TO_OPEN'));
-        const TxnTable=({keys,label,color})=>{
-          const allSel=keys.length>0&&keys.every(k=>selected.has(k));
+        const openIdxs=filteredIdxs.filter(i=>txns[i]?.ac?.includes('_TO_OPEN'));
+        const closeIdxs=filteredIdxs.filter(i=>!txns[i]?.ac?.includes('_TO_OPEN'));
+        const TxnTable=({idxs,label,color})=>{
+          const allSel=idxs.length>0&&idxs.every(i=>selected.has(i));
           const toggleSection=()=>{
             const next=new Set(selected);
-            if(allSel)keys.forEach(k=>next.delete(k));
-            else keys.forEach(k=>next.add(k));
+            if(allSel)idxs.forEach(i=>next.delete(i));
+            else idxs.forEach(i=>next.add(i));
             setSelected(next);
           };
           return <div style={{flex:1,minWidth:0}}>
             <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'1px solid #1a1a1a',marginBottom:6}}>
               <input type="checkbox" checked={allSel} onChange={toggleSection} style={{cursor:'pointer'}}/>
               <span style={{fontSize:11,color:color,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.07em'}}>{label}</span>
-              <span style={{fontSize:11,color:'#444',background:'#161616',padding:'1px 6px',borderRadius:8}}>{keys.length}</span>
-              <span style={{marginLeft:'auto',fontSize:11,color:'#555'}}>{fmtPnL(keys.reduce((a,k)=>a+(txMap[k]?.to||0),0))}</span>
+              <span style={{fontSize:11,color:'#444',background:'#161616',padding:'1px 6px',borderRadius:8}}>{idxs.length}</span>
+              <span style={{marginLeft:'auto',fontSize:11,color:'#555'}}>{fmtPnL(idxs.reduce((a,i)=>a+(txns[i]?.to||0),0))}</span>
             </div>
             <div style={{overflowY:'auto',maxHeight:'calc(100vh - 280px)'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                <thead>
-                  <tr style={{borderBottom:'1px solid #161616'}}>
-                    {['','Date','Symbol','Action','Qty','Net','Assigned'].map((h,i)=>(
-                      <th key={i} style={{padding:'5px 8px',textAlign:['Qty','Net'].includes(h)?'right':'left',color:'#444',fontWeight:500,fontSize:10,textTransform:'uppercase',letterSpacing:'0.05em',whiteSpace:'nowrap'}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
+                <thead><tr style={{borderBottom:'1px solid #161616'}}>
+                  {['','Date','Symbol','Action','Qty','Net','Assigned'].map((h,hi)=>(
+                    <th key={hi} style={{padding:'5px 8px',textAlign:['Qty','Net'].includes(h)?'right':'left',color:'#444',fontWeight:500,fontSize:10,textTransform:'uppercase',letterSpacing:'0.05em',whiteSpace:'nowrap'}}>{h}</th>
+                  ))}
+                </tr></thead>
                 <tbody>
-                  {keys.map(k=>{
-                    const t=txMap[k];if(!t)return null;
-                    const isSel=selected.has(k);
+                  {idxs.map(i=>{
+                    const t=txns[i];if(!t)return null;
+                    const k=txnKeys[i];
+                    const isSel=selected.has(i);
                     const aPos=positions.find(p=>p.txnKeys.includes(k));
                     const isS=t.ac?.includes('SELL');
-                    return <tr key={k} onClick={()=>toggleSelect(k)}
+                    return <tr key={i} onClick={()=>toggleSelect(i)}
                       style={{borderBottom:'1px solid #0f0f0f',background:isSel?'#1c1c2a':aPos?'#0f1a0f':'transparent',cursor:'pointer'}}
                       onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background=aPos?'#141f14':'#111';}}
                       onMouseLeave={e=>{e.currentTarget.style.background=isSel?'#1c1c2a':aPos?'#0f1a0f':'transparent';}}>
-                      <td style={{padding:'6px 8px'}}>
-                        <input type="checkbox" checked={isSel} onChange={()=>toggleSelect(k)} onClick={e=>e.stopPropagation()} style={{cursor:'pointer'}}/>
-                      </td>
+                      <td style={{padding:'6px 8px'}}><input type="checkbox" checked={isSel} onChange={()=>toggleSelect(i)} onClick={e=>e.stopPropagation()} style={{cursor:'pointer'}}/></td>
                       <td style={{padding:'6px 8px',color:'#777',whiteSpace:'nowrap'}}>{fmtShort(t.d)}</td>
                       <td style={{padding:'6px 8px',fontFamily:'monospace',fontSize:10,color:'#aaa',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={t.sy}>{t.sy}</td>
                       <td style={{padding:'6px 8px',color:isS?'#4ade80':'#f87171',fontWeight:600,whiteSpace:'nowrap',fontSize:11}}>{AC[t.ac]||t.ac}</td>
                       <td style={{padding:'6px 8px',textAlign:'right',color:'#aaa'}}>{t.q}</td>
                       <td style={{padding:'6px 8px',textAlign:'right',fontFamily:'monospace',fontWeight:700,color:t.to>=0?'#4ade80':'#f87171',whiteSpace:'nowrap'}}>{fmtPnL(t.to)}</td>
                       <td style={{padding:'6px 8px'}} onClick={e=>e.stopPropagation()}>
-                        {aPos
-                          ?<span style={{fontSize:10,color:SMAP[aPos.strategy]?.color||'#888',border:'1px solid #222',borderRadius:3,padding:'2px 6px',whiteSpace:'nowrap',cursor:'pointer',display:'block',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis'}}
-                            onClick={()=>editPosition(aPos)} title={aPos.name}>{aPos.name}</span>
+                        {aPos?<span style={{fontSize:10,color:SMAP[aPos.strategy]?.color||'#888',border:'1px solid #222',borderRadius:3,padding:'2px 6px',whiteSpace:'nowrap',cursor:'pointer',display:'block',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis'}} onClick={()=>editPosition(aPos)} title={aPos.name}>{aPos.name}</span>
                           :<span style={{fontSize:10,color:'#2a2a2a'}}>—</span>}
                       </td>
                     </tr>;
                   })}
-                  {keys.length===0&&<tr><td colSpan={7} style={{padding:'20px 8px',color:'#333',textAlign:'center',fontSize:12}}>None</td></tr>}
+                  {idxs.length===0&&<tr><td colSpan={7} style={{padding:'20px 8px',color:'#333',textAlign:'center',fontSize:12}}>None</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>;
         };
         return <div style={{display:'flex',gap:12}}>
-          <TxnTable keys={opens} label="Opens" color="#4ade80"/>
+          <TxnTable idxs={openIdxs} label="Opens" color="#4ade80"/>
           <div style={{width:1,background:'#1a1a1a',flexShrink:0}}/>
-          <TxnTable keys={closes} label="Closes / Expirations" color="#f87171"/>
+          <TxnTable idxs={closeIdxs} label="Closes / Expirations" color="#f87171"/>
         </div>;
       })()}
     </div>}
