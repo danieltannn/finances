@@ -70,7 +70,7 @@ function parseCSV(txt){
   }
   return rows;
 }
-function txnKey(r){return[r.d?.slice(0,16),r.oi||'',r.sy,r.ac,r.q].join('|');}
+function txnKey(r){return[r.d?.slice(0,16),r.oi||'',r.sy,r.ac,r.q,Math.round((r.to||0)*100)].join('|');}
 function dedup(newRows,existingKeys){
   var set=new Set(existingKeys),added=[];
   newRows.forEach(r=>{var k=txnKey(r);if(!set.has(k)){added.push(r);set.add(k);}});
@@ -464,7 +464,13 @@ function App(){
 
   /* Derived */
   const txMap=React.useMemo(()=>{
-    const m={};txns.forEach((t,i)=>{m[txnKeys[i]]=t;});return m;
+    const m={};
+    /* Use index to avoid collision — last write wins without this fix */
+    txns.forEach((t,i)=>{
+      const k=txnKeys[i];
+      if(!m[k])m[k]=t; /* keep first occurrence; key includes total so collisions are gone */
+    });
+    return m;
   },[txns,txnKeys]);
 
   const assignedKeys=React.useMemo(()=>{
@@ -513,7 +519,16 @@ function App(){
       console.log('Existing key count:', txnKeys.length);
 
       if(nr.length===0){
-        showToastMsg('CSV parsed 0 rows — wrong file or format mismatch.','err');
+        /* Show the actual header + first data row so we can diagnose */
+        const lines=text.split('\n').filter(l=>l.trim());
+        const header=lines[0]||'(empty)';
+        const first=lines[1]||'(no data rows)';
+        console.log('=== CSV DEBUG ===');
+        console.log('Header row:', header);
+        console.log('First data row:', first);
+        console.log('Total lines:', lines.length);
+        console.log('Header columns:', header.split(',').map((c,i)=>i+':'+c.trim()));
+        showToastMsg('CSV parsed 0 rows. Open console (F12) to see header details.','err');
         return;
       }
 
