@@ -287,7 +287,6 @@ function WinBar({rate}){
 function StratCard({strat,metrics,positions,txns,txnKeys}){
   positions=positions||[];txns=txns||[];txnKeys=txnKeys||[];
   const[selTicker,setSelTicker]=React.useState(null);
-  const[tickerOpen,setTickerOpen]=React.useState(false);
 
   const tickerRows=React.useMemo(()=>{
     const byT={};
@@ -357,16 +356,11 @@ function StratCard({strat,metrics,positions,txns,txnKeys}){
         <span style={{fontSize:11,color:'#555',border:'1px solid #1a1a1a',borderRadius:3,padding:'2px 8px'}}>{d.closedCount} closed</span>
       </div>
       {tickerRows.length>0&&<div style={{marginTop:14,paddingTop:12,borderTop:'1px solid #1a1a1a'}}>
-        <button onClick={()=>setTickerOpen(o=>!o)}
-          style={{display:'flex',alignItems:'center',justifyContent:'space-between',width:'100%',background:'transparent',border:'none',cursor:'pointer',padding:0,fontFamily:'inherit'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
           <span style={{fontSize:10,color:'#555',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>By Ticker</span>
-          <span style={{display:'flex',alignItems:'center',gap:6}}>
-            {selTicker&&<span style={{fontSize:10,color:'#ccc',fontFamily:'monospace',background:'#1a1a1a',padding:'1px 6px',borderRadius:3}}>{selTicker}</span>}
-            <span style={{fontSize:10,color:'#444'}}>{tickerRows.length} ticker{tickerRows.length!==1?'s':''}</span>
-            <span style={{fontSize:9,color:'#444',display:'inline-block',transition:'transform .2s',transform:tickerOpen?'rotate(180deg)':'none'}}>▼</span>
-          </span>
-        </button>
-        {tickerOpen&&<div style={{marginTop:8}}>
+          {selTicker&&<button onClick={()=>setSelTicker(null)} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>Clear ✕</button>}
+        </div>
+        <div>
           {tickerRows.map(r=>{
             const isSel=r.ticker===selTicker;
             return(
@@ -383,7 +377,7 @@ function StratCard({strat,metrics,positions,txns,txnKeys}){
               </div>
             );
           })}
-        </div>}
+        </div>
       </div>}
     </div>
   );
