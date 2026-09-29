@@ -95,6 +95,13 @@ function detectStrategy(openLegs){
   return'misc';
 }
 function baseTicker(u){if(!u||u[0]!='/')return u;var l=u.slice(-2);if('FGHJKMNQUVXZ'.indexOf(l[0])!==-1&&/[0-9]/.test(l[1]))return u.slice(0,-2);return u;}
+function posUnderlying(pos,txns,txnKeys){
+  for(var i=0;i<pos.txnKeys.length;i++){
+    var idx=txnKeys.indexOf(pos.txnKeys[i]);
+    if(idx>=0&&txns[idx]){var t=txns[idx];var u=t.us||t.rs||t.sy||'';if(u)return baseTicker(u);}
+  }
+  return '?';
+}
 
 /* Position helpers */
 function isOpen(pos,txns,txnKeys){
@@ -277,32 +284,109 @@ function WinBar({rate}){
   </div>;
 }
 
-function StratCard({strat,metrics}){
+function StratCard({strat,metrics,positions,txns,txnKeys}){
+  positions=positions||[];txns=txns||[];txnKeys=txnKeys||[];
+  const[selTicker,setSelTicker]=React.useState(null);
+  const[tickerOpen,setTickerOpen]=React.useState(false);
+
+  const tickerRows=React.useMemo(()=>{
+    const byT={};
+    positions.forEach(p=>{
+      const u=posUnderlying(p,txns,txnKeys);
+      if(!byT[u])byT[u]={open:[],closed:[]};
+      (isOpen(p,txns,txnKeys)?byT[u].open:byT[u].closed).push(p);
+    });
+    return Object.entries(byT).map(([ticker,{open,closed}])=>{
+      const wins=closed.filter(p=>posPnL(p,txns,txnKeys)>0).length;
+      const cpnl=closed.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
+      const oprem=open.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
+      return{ticker,total:open.length+closed.length,openCount:open.length,
+        closedCount:closed.length,wins,winRate:closed.length?Math.round(wins/closed.length*100):0,totalPnL:cpnl+oprem};
+    }).sort((a,b)=>b.totalPnL-a.totalPnL);
+  },[positions,txns,txnKeys]);
+
+  const filtered=React.useMemo(()=>{
+    if(!selTicker)return null;
+    const fps=positions.filter(p=>posUnderlying(p,txns,txnKeys)===selTicker);
+    const open=fps.filter(p=>isOpen(p,txns,txnKeys));
+    const closed=fps.filter(p=>!isOpen(p,txns,txnKeys));
+    const wins=closed.filter(p=>posPnL(p,txns,txnKeys)>0).length;
+    const cpnl=closed.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
+    const oprem=open.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
+    const pnls=closed.map(p=>posPnL(p,txns,txnKeys));
+    const dits=closed.map(p=>posDIT(p,txns,txnKeys));
+    return{total:fps.length,openCount:open.length,closedCount:closed.length,wins,
+      winRate:closed.length?Math.round(wins/closed.length*100):0,
+      closedPnL:cpnl,openPremium:oprem,totalPnL:cpnl+oprem,
+      avgPnL:closed.length?cpnl/closed.length:0,
+      avgDIT:dits.length?Math.round(dits.reduce((a,b)=>a+b,0)/dits.length):0,
+      best:pnls.length?Math.max(...pnls):0,worst:pnls.length?Math.min(...pnls):0};
+  },[selTicker,positions,txns,txnKeys]);
+
+  const d=filtered||metrics;
+  if(!d)return null;
   const s=SMAP[strat]||SMAP.misc;
-  if(!metrics)return null;
   const Row=({label,value,color})=><div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #141414'}}>
     <span style={{fontSize:12,color:'#777'}}>{label}</span>
     <span style={{fontSize:12,fontFamily:'monospace',fontWeight:600,color:color||'#aaa'}}>{value}</span>
   </div>;
-  return <div style={{background:'#111',border:'1px solid #1a1a1a',borderTop:'2px solid '+s.color,borderRadius:8,padding:'16px 18px',flex:1,minWidth:210}}>
-    <div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}>
-      <span style={{fontWeight:700,fontSize:14,color:'#fff'}}>{s.label}</span>
-      <span style={{fontSize:12,color:'#555'}}>{metrics.total} positions</span>
+  return(
+    <div style={{background:'#111',border:'1px solid #1a1a1a',borderTop:'2px solid '+s.color,borderRadius:8,padding:'16px 18px',flex:1,minWidth:210}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <span style={{fontWeight:700,fontSize:14,color:'#fff'}}>{s.label}</span>
+          {selTicker&&<div style={{display:'flex',alignItems:'center',gap:4}}>
+            <span style={{color:'#333',fontSize:12}}>·</span>
+            <span style={{fontFamily:'monospace',color:'#ccc',fontSize:12,background:'#1a1a1a',padding:'1px 7px',borderRadius:3}}>{selTicker}</span>
+            <button onClick={()=>setSelTicker(null)} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:12,padding:'0 2px',lineHeight:1}}>✕</button>
+          </div>}
+        </div>
+        <span style={{fontSize:12,color:'#555'}}>{d.total} positions</span>
+      </div>
+      <div style={{marginBottom:12}}>
+        <div style={{fontSize:11,color:'#666',marginBottom:5}}>Win rate — {d.closedCount} closed</div>
+        <WinBar rate={d.winRate}/>
+      </div>
+      <div style={{fontSize:22,fontWeight:700,fontFamily:'monospace',color:d.totalPnL>=0?'#4ade80':'#f87171',marginBottom:12}}>{fmtPnL(d.totalPnL)}</div>
+      <Row label="Realized" value={fmtPnL(d.closedPnL)} color={d.closedPnL>=0?'#4ade80':'#f87171'}/>
+      <Row label="Open premium" value={fmtPnL(d.openPremium)} color="#888"/>
+      <Row label="Avg P&L / trade" value={fmtPnL(d.avgPnL)} color={d.avgPnL>=0?'#4ade80':'#f87171'}/>
+      <Row label="Avg hold" value={d.avgDIT+'d'}/>
+      <div style={{display:'flex',gap:6,marginTop:12}}>
+        {d.openCount>0&&<span style={{fontSize:11,color:'#4ade80',border:'1px solid #1e3a2a',borderRadius:3,padding:'2px 8px'}}>{d.openCount} open</span>}
+        <span style={{fontSize:11,color:'#555',border:'1px solid #1a1a1a',borderRadius:3,padding:'2px 8px'}}>{d.closedCount} closed</span>
+      </div>
+      {tickerRows.length>0&&<div style={{marginTop:14,paddingTop:12,borderTop:'1px solid #1a1a1a'}}>
+        <button onClick={()=>setTickerOpen(o=>!o)}
+          style={{display:'flex',alignItems:'center',justifyContent:'space-between',width:'100%',background:'transparent',border:'none',cursor:'pointer',padding:0,fontFamily:'inherit'}}>
+          <span style={{fontSize:10,color:'#555',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>By Ticker</span>
+          <span style={{display:'flex',alignItems:'center',gap:6}}>
+            {selTicker&&<span style={{fontSize:10,color:'#ccc',fontFamily:'monospace',background:'#1a1a1a',padding:'1px 6px',borderRadius:3}}>{selTicker}</span>}
+            <span style={{fontSize:10,color:'#444'}}>{tickerRows.length} ticker{tickerRows.length!==1?'s':''}</span>
+            <span style={{fontSize:9,color:'#444',display:'inline-block',transition:'transform .2s',transform:tickerOpen?'rotate(180deg)':'none'}}>▼</span>
+          </span>
+        </button>
+        {tickerOpen&&<div style={{marginTop:8}}>
+          {tickerRows.map(r=>{
+            const isSel=r.ticker===selTicker;
+            return(
+              <div key={r.ticker} onClick={()=>setSelTicker(isSel?null:r.ticker)}
+                style={{display:'flex',alignItems:'center',gap:6,padding:'6px 8px',marginBottom:2,
+                  borderRadius:4,cursor:'pointer',border:'1px solid '+(isSel?'#2a2a2a':'transparent'),
+                  background:isSel?'#1a1a1a':'transparent',transition:'background .1s'}}>
+                <span style={{fontSize:12,fontFamily:'monospace',color:isSel?'#fff':'#ccc',fontWeight:isSel?700:500,width:76,flexShrink:0}}>{r.ticker}</span>
+                <span style={{fontSize:12,fontFamily:'monospace',fontWeight:700,flex:1,color:r.totalPnL>=0?'#4ade80':'#f87171'}}>{fmtPnL(r.totalPnL)}</span>
+                <span style={{fontSize:11,color:'#555',flexShrink:0}}>{r.total}t</span>
+                {r.closedCount>0&&<span style={{fontSize:11,flexShrink:0,width:34,textAlign:'right',color:r.winRate>=50?'#4ade80':'#f87171'}}>{r.winRate}%</span>}
+                {r.openCount>0&&r.closedCount===0&&<span style={{fontSize:10,color:'#4ade80',flexShrink:0}}>open</span>}
+                {isSel&&<span style={{fontSize:10,color:'#555',flexShrink:0}}>✕</span>}
+              </div>
+            );
+          })}
+        </div>}
+      </div>}
     </div>
-    <div style={{marginBottom:12}}>
-      <div style={{fontSize:11,color:'#666',marginBottom:5}}>Win rate — {metrics.closedCount} closed</div>
-      <WinBar rate={metrics.winRate}/>
-    </div>
-    <div style={{fontSize:22,fontWeight:700,fontFamily:'monospace',color:metrics.totalPnL>=0?'#4ade80':'#f87171',marginBottom:12}}>{fmtPnL(metrics.totalPnL)}</div>
-    <Row label="Realized" value={fmtPnL(metrics.closedPnL)} color={metrics.closedPnL>=0?'#4ade80':'#f87171'}/>
-    <Row label="Open premium" value={fmtPnL(metrics.openPremium)} color="#888"/>
-    <Row label="Avg P&L / trade" value={fmtPnL(metrics.avgPnL)} color={metrics.avgPnL>=0?'#4ade80':'#f87171'}/>
-    <Row label="Avg hold" value={metrics.avgDIT+'d'}/>
-    <div style={{display:'flex',gap:6,marginTop:12}}>
-      {metrics.openCount>0&&<span style={{fontSize:11,color:'#4ade80',border:'1px solid #1e3a2a',borderRadius:3,padding:'2px 8px'}}>{metrics.openCount} open</span>}
-      <span style={{fontSize:11,color:'#555',border:'1px solid #1a1a1a',borderRadius:3,padding:'2px 8px'}}>{metrics.closedCount} closed</span>
-    </div>
-  </div>;
+  );
 }
 
 /* ── Position Card ── */
@@ -817,7 +901,7 @@ function App(){
       </div>
       <div style={{fontSize:11,color:'#555',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:12}}>Strategy Breakdown</div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-        {STRATS.filter(s=>metrics[s.v]).map(s=><StratCard key={s.v} strat={s.v} metrics={metrics[s.v]}/>)}
+        {STRATS.filter(s=>metrics[s.v]).map(s=><StratCard key={s.v} strat={s.v} metrics={metrics[s.v]} positions={positions.filter(p=>p.strategy===s.v)} txns={txns} txnKeys={txnKeys}/>)}
       </div>
       {!Object.keys(metrics).length&&<div style={{textAlign:'center',color:'#444',padding:'40px 0',fontSize:13}}>Assign positions to strategies to see metrics</div>}
     </div>}
