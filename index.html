@@ -454,31 +454,72 @@ function PosCard({pos,txns,txnKeys,onEdit,onDelete,onStrategyChange,onNameChange
 /* ── Positions Panel ── */
 function PositionsPanel({positions,txns,txnKeys,editPosition,deletePosition,onStrategyChange,onNameChange}){
   const [closedExp,setClosedExp]=React.useState(false);
+  /* each strategy section independently collapsible */
+  const [stratExp,setStratExp]=React.useState({});
+  const toggleStrat=v=>setStratExp(prev=>({...prev,[v]:!prev[v]}));
+
   const opens=positions.filter(p=>isOpen(p,txns,txnKeys));
   const closed=positions.filter(p=>!isOpen(p,txns,txnKeys));
-  const SecHdr=({label,count,pnl,toggle,collapsed})=>(
-    <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'1px solid #1a1a1a',marginBottom:8,cursor:toggle?'pointer':'default'}} onClick={toggle}>
-      {toggle&&<span style={{fontSize:9,color:'#444',transform:collapsed?'rotate(-90deg)':'none',display:'inline-block',transition:'transform .15s'}}>▼</span>}
-      <span style={{fontSize:11,color:'#666',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>{label}</span>
+
+  const SecHdr=({label,count,pnl,toggle,collapsed,color})=>(
+    <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'1px solid #1a1a1a',marginBottom:8,cursor:toggle?'pointer':'default',userSelect:'none'}} onClick={toggle}>
+      {toggle&&<span style={{fontSize:9,color:'#444',display:'inline-block',transition:'transform .15s',transform:collapsed?'rotate(-90deg)':'rotate(0deg)'}}>▼</span>}
+      {color&&<span style={{display:'inline-block',width:8,height:8,borderRadius:1,background:color,flexShrink:0}}/>}
+      <span style={{fontSize:11,color:'#888',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.07em'}}>{label}</span>
       <span style={{fontSize:11,color:'#444',background:'#161616',padding:'1px 7px',borderRadius:10}}>{count}</span>
       <span style={{marginLeft:'auto',fontFamily:'monospace',fontWeight:700,fontSize:13,color:pnl>=0?'#4ade80':'#f87171'}}>{fmtPnL(pnl)}</span>
     </div>
   );
+
   if(!positions.length)return <div style={{textAlign:'center',color:'#444',padding:'60px 0'}}>
     <div style={{fontSize:15,marginBottom:8}}>No positions yet</div>
     <div style={{fontSize:13}}>Go to ⚡ Pre-Check to auto-detect, or Transactions to map manually</div>
   </div>;
+
   const card=p=><PosCard key={p.id} pos={p} txns={txns} txnKeys={txnKeys}
     onEdit={()=>editPosition(p)} onDelete={()=>deletePosition(p.id)}
     onStrategyChange={s=>onStrategyChange(p,s)} onNameChange={n=>onNameChange(p,n)}/>;
+
+  /* Group closed by strategy, using STRATS order */
+  const closedByStrat=STRATS.map(s=>({
+    ...s,
+    positions:closed.filter(p=>(p.strategy||'misc')===s.v)
+  })).filter(s=>s.positions.length>0);
+
   return <div>
+    {/* ── Open ── */}
     {opens.length>0&&<>
       <SecHdr label="Open" count={opens.length} pnl={opens.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0)}/>
-      <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>{opens.map(card)}</div>
+      <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:24}}>{opens.map(card)}</div>
     </>}
+
+    {/* ── Closed (grouped by strategy) ── */}
     {closed.length>0&&<>
-      <SecHdr label="Closed" count={closed.length} pnl={closed.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0)} toggle={()=>setClosedExp(e=>!e)} collapsed={!closedExp}/>
-      {closedExp&&<div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>{closed.map(card)}</div>}
+      <SecHdr label="Closed" count={closed.length}
+        pnl={closed.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0)}
+        toggle={()=>setClosedExp(e=>!e)} collapsed={!closedExp}/>
+      {closedExp&&<div style={{marginBottom:24}}>
+        {closedByStrat.map(s=>{
+          const isExp=stratExp[s.v]!==false; /* default open */
+          const spnl=s.positions.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
+          const wins=s.positions.filter(p=>posPnL(p,txns,txnKeys)>0).length;
+          return <div key={s.v} style={{marginBottom:16}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',
+              background:'#0d0d0d',borderRadius:6,marginBottom:6,cursor:'pointer',
+              border:'1px solid #181818',borderLeft:'3px solid '+s.color,userSelect:'none'}}
+              onClick={()=>toggleStrat(s.v)}>
+              <span style={{fontSize:9,color:'#444',display:'inline-block',transition:'transform .15s',transform:isExp?'rotate(0deg)':'rotate(-90deg)'}}>▼</span>
+              <span style={{fontWeight:700,fontSize:12,color:s.color}}>{s.label}</span>
+              <span style={{fontSize:11,color:'#555',background:'#161616',padding:'1px 7px',borderRadius:10}}>{s.positions.length}</span>
+              <span style={{fontSize:11,color:'#666',marginLeft:4}}>{wins}/{s.positions.length} wins</span>
+              <span style={{marginLeft:'auto',fontFamily:'monospace',fontWeight:700,fontSize:13,color:spnl>=0?'#4ade80':'#f87171'}}>{fmtPnL(spnl)}</span>
+            </div>
+            {isExp&&<div style={{display:'flex',flexDirection:'column',gap:6,paddingLeft:8}}>
+              {s.positions.map(card)}
+            </div>}
+          </div>;
+        })}
+      </div>}
     </>}
   </div>;
 }
