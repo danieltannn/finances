@@ -500,7 +500,7 @@ function PositionsPanel({positions,txns,txnKeys,editPosition,deletePosition,onSt
         toggle={()=>setClosedExp(e=>!e)} collapsed={!closedExp}/>
       {closedExp&&<div style={{marginBottom:24}}>
         {closedByStrat.map(s=>{
-          const isExp=stratExp[s.v]!==false; /* default open */
+          const isExp=stratExp[s.v]===true; /* default closed */
           const spnl=s.positions.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
           const wins=s.positions.filter(p=>posPnL(p,txns,txnKeys)>0).length;
           return <div key={s.v} style={{marginBottom:16}}>
