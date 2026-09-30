@@ -284,9 +284,10 @@ function WinBar({rate}){
   </div>;
 }
 
-function StratCard({strat,metrics,positions,txns,txnKeys,tickerOpen,onToggleTicker}){
+function StratCard({strat,metrics,positions,txns,txnKeys}){
   positions=positions||[];txns=txns||[];txnKeys=txnKeys||[];
   const[selTicker,setSelTicker]=React.useState(null);
+  const[tickerOpen,setTickerOpen]=React.useState(false);
 
   const tickerRows=React.useMemo(()=>{
     const byT={};
@@ -356,7 +357,7 @@ function StratCard({strat,metrics,positions,txns,txnKeys,tickerOpen,onToggleTick
         <span style={{fontSize:11,color:'#555',border:'1px solid #1a1a1a',borderRadius:3,padding:'2px 8px'}}>{d.closedCount} closed</span>
       </div>
       {tickerRows.length>0&&<div style={{marginTop:14,paddingTop:12,borderTop:'1px solid #1a1a1a'}}>
-        <button onClick={onToggleTicker}
+        <button onClick={()=>setTickerOpen(o=>!o)}
           style={{display:'flex',alignItems:'center',justifyContent:'space-between',width:'100%',background:'transparent',border:'none',cursor:'pointer',padding:0,fontFamily:'inherit'}}>
           <span style={{fontSize:10,color:'#555',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>By Ticker</span>
           <span style={{display:'flex',alignItems:'center',gap:6}}>
@@ -664,6 +665,77 @@ function PreCheck({txns,txnKeys,positions,onAccept}){
   </div>;
 }
 
+/* ── Account View ── */
+function AccountView({money}){
+  const sorted=[...money].sort((a,b)=>a.d>b.d?-1:1);
+
+  const TYPE={
+    'Deposit':       {color:'#4ade80', bg:'rgba(74,222,128,0.08)'},
+    'Credit Interest':{color:'#38bdf8', bg:'rgba(56,189,248,0.08)'},
+    'Balance Adjustment':{color:'#f87171', bg:'rgba(248,113,113,0.08)'},
+    'Withdrawal':    {color:'#fb923c', bg:'rgba(251,146,60,0.08)'},
+  };
+
+  const totals=sorted.reduce((acc,r)=>{
+    acc[r.st]=(acc[r.st]||0)+r.to; return acc;
+  },{});
+
+  const totalIn =sorted.filter(r=>r.to>0).reduce((a,r)=>a+r.to,0);
+  const totalOut=sorted.filter(r=>r.to<0).reduce((a,r)=>a+r.to,0);
+  const net=totalIn+totalOut;
+
+  const fmtD=d=>d?new Date(d).toLocaleDateString('en-SG',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+
+  return <div style={{maxWidth:900,margin:'0 auto',padding:16}}>
+    {/* Summary cards */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8,marginBottom:20}}>
+      {Object.entries(totals).map(([st,total])=>{
+        const tc=TYPE[st]||{color:'#888',bg:'rgba(136,136,136,0.08)'};
+        return <div key={st} style={{background:'#111',border:'1px solid #1a1a1a',borderTop:'2px solid '+tc.color,borderRadius:8,padding:'12px 14px'}}>
+          <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{st}</div>
+          <div style={{fontFamily:'monospace',fontWeight:700,fontSize:18,color:total>=0?tc.color:'#f87171'}}>{total>=0?'+':''}{total.toFixed(2)}</div>
+          <div style={{fontSize:11,color:'#444',marginTop:3}}>{sorted.filter(r=>r.st===st).length} entries</div>
+        </div>;
+      })}
+      <div style={{background:'#111',border:'1px solid #1a1a1a',borderTop:'2px solid #a78bfa',borderRadius:8,padding:'12px 14px'}}>
+        <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>Net</div>
+        <div style={{fontFamily:'monospace',fontWeight:700,fontSize:18,color:net>=0?'#4ade80':'#f87171'}}>{net>=0?'+':''}{net.toFixed(2)}</div>
+        <div style={{fontSize:11,color:'#444',marginTop:3}}>{sorted.length} total entries</div>
+      </div>
+    </div>
+
+    {/* Table */}
+    <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:8,overflow:'hidden'}}>
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+        <thead>
+          <tr style={{borderBottom:'1px solid #1e1e1e'}}>
+            {['Date','Type','Description','Amount'].map((h,i)=>(
+              <th key={i} style={{padding:'10px 14px',textAlign:h==='Amount'?'right':'left',fontSize:10,color:'#555',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((r,i)=>{
+            const tc=TYPE[r.st]||{color:'#888',bg:'transparent'};
+            return <tr key={i} style={{borderBottom:'1px solid #0f0f0f'}}
+              onMouseEnter={e=>e.currentTarget.style.background='#141414'}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              <td style={{padding:'9px 14px',color:'#777',whiteSpace:'nowrap'}}>{fmtD(r.d)}</td>
+              <td style={{padding:'9px 14px'}}>
+                <span style={{fontSize:11,color:tc.color,background:tc.bg,border:'1px solid '+tc.color+'33',borderRadius:3,padding:'2px 8px',whiteSpace:'nowrap'}}>{r.st}</span>
+              </td>
+              <td style={{padding:'9px 14px',color:'#888',fontSize:12}}>{r.desc||'—'}</td>
+              <td style={{padding:'9px 14px',textAlign:'right',fontFamily:'monospace',fontWeight:700,color:r.to>=0?'#4ade80':'#f87171',whiteSpace:'nowrap'}}>
+                {r.to>=0?'+':''}{r.to.toFixed(2)}
+              </td>
+            </tr>;
+          })}
+        </tbody>
+      </table>
+    </div>
+  </div>;
+}
+
 /* ══════════ Main App ══════════ */
 function App(){
   const [txns,setTxns]=React.useState([]);
@@ -677,7 +749,6 @@ function App(){
   const [showModal,setShowModal]=React.useState(null);
   const [showSync,setShowSync]=React.useState(false);
   const [syncSt,setSyncSt]=React.useState('');
-  const [tickerOpenMap,setTickerOpenMap]=React.useState({});
   const [ready,setReady]=React.useState(false);
   const [toast,setToast]=React.useState(null);
 
@@ -820,7 +891,7 @@ function App(){
           <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>Trading Journal</div>
           <div style={{fontSize:10,color:'#555'}}>TastyTrade · x5WX56094</div>
         </div>
-        {[['transactions','Transactions'],['positions','Positions'],['dashboard','Dashboard'],['precheck','⚡ Pre-Check']].map(([v,l])=>(
+        {[['transactions','Transactions'],['positions','Positions'],['dashboard','Dashboard'],['account','Account'],['precheck','⚡ Pre-Check']].map(([v,l])=>(
           <button key={v} onClick={()=>{setView(v);setSelected(new Set());}} style={navBtn(view===v,v==='precheck'&&view!=='precheck'?{borderColor:'#2a1a00',color:'#fbbf24'}:{})}>
             {l}
           </button>
@@ -901,10 +972,13 @@ function App(){
       </div>
       <div style={{fontSize:11,color:'#555',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:12}}>Strategy Breakdown</div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-        {STRATS.filter(s=>metrics[s.v]).map(s=><StratCard key={s.v} strat={s.v} metrics={metrics[s.v]} positions={positions.filter(p=>p.strategy===s.v)} txns={txns} txnKeys={txnKeys} tickerOpen={!!tickerOpenMap[s.v]} onToggleTicker={()=>setTickerOpenMap(prev=>({...prev,[s.v]:!prev[s.v]}))}/>)}
+        {STRATS.filter(s=>metrics[s.v]).map(s=><StratCard key={s.v} strat={s.v} metrics={metrics[s.v]} positions={positions.filter(p=>p.strategy===s.v)} txns={txns} txnKeys={txnKeys}/>)}
       </div>
       {!Object.keys(metrics).length&&<div style={{textAlign:'center',color:'#444',padding:'40px 0',fontSize:13}}>Assign positions to strategies to see metrics</div>}
     </div>}
+
+    {/* ── Account ── */}
+    {view==='account'&&<AccountView money={INIT_MONEY}/>}
 
     {/* ── Pre-Check ── */}
     {view==='precheck'&&<PreCheck txns={txns} txnKeys={txnKeys} positions={positions} onAccept={acceptSuggestion}/>}
