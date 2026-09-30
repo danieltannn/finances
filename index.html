@@ -984,10 +984,10 @@ function App(){
     {/* ── Positions ── */}
     {view==='positions'&&<div style={{maxWidth:1300,margin:'0 auto',padding:16}}>
       <div style={{display:'flex',gap:10,marginBottom:16,alignItems:'center',flexWrap:'wrap'}}>
-        <span style={{color:'#555',fontSize:13}}>{positions.length} positions · {assignedKeys.size} assigned · {txns.length-assignedKeys.size} unassigned</span>
-        {txns.length-assignedKeys.size>0&&<button onClick={()=>{setView('transactions');setFilter('unassigned');}}
+        <span style={{color:'#555',fontSize:13}}>{positions.length} positions · {assignedKeys.size} assigned · {txnKeys.filter(k=>!assignedKeys.has(k)).length} unassigned</span>
+        {txnKeys.filter(k=>!assignedKeys.has(k)).length>0&&<button onClick={()=>{setView('transactions');setFilter('unassigned');}}
           style={{background:'transparent',border:'1px solid #fbbf2444',color:'#fbbf24',borderRadius:4,padding:'5px 12px',fontSize:12,cursor:'pointer'}}>
-          View {txns.length-assignedKeys.size} unassigned ↗
+          View {txnKeys.filter(k=>!assignedKeys.has(k)).length} unassigned ↗
         </button>}
       </div>
       <PositionsPanel positions={positions} txns={txns} txnKeys={txnKeys}
@@ -1003,7 +1003,7 @@ function App(){
           {label:'Deposited',value:'$'+deposits.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})},
           {label:'Realized P&L',value:fmtPnL(positions.filter(p=>!isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0)),color:positions.filter(p=>!isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0)>=0?'#4ade80':'#f87171'},
           {label:'Open Premium',value:fmtPnL(positions.filter(p=>isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0)),color:'#888'},
-          {label:'Unassigned',value:txns.length-assignedKeys.size,color:'#fbbf24'},
+          {label:'Unassigned',value:txnKeys.filter(k=>!assignedKeys.has(k)).length,color:'#fbbf24'},
         ].map(({label,value,color})=>(
           <div key={label} style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:8,padding:'14px 16px'}}>
             <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:5}}>{label}</div>
