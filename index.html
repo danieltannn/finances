@@ -777,6 +777,93 @@ function AccountView({money}){
   </div>;
 }
 
+/* ── Monthly P&L Calendar ── */
+function MonthlyPnL({positions,txns,txnKeys}){
+  const now=new Date();
+  const [year,setYear]=React.useState(now.getFullYear());
+
+  const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  /* Build month map: "YYYY-MM" → {pnl, trades, wins} */
+  const monthMap=React.useMemo(()=>{
+    const m={};
+    positions.forEach(p=>{
+      const cd=posCloseDate(p,txns,txnKeys);
+      if(!cd)return;
+      const d=new Date(cd);
+      const key=d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0');
+      if(!m[key])m[key]={pnl:0,trades:0,wins:0};
+      const pnl=posPnL(p,txns,txnKeys);
+      m[key].pnl+=pnl;
+      m[key].trades++;
+      if(pnl>0)m[key].wins++;
+    });
+    return m;
+  },[positions,txns,txnKeys]);
+
+  /* Years that have data */
+  const years=React.useMemo(()=>{
+    const ys=new Set(Object.keys(monthMap).map(k=>parseInt(k.slice(0,4))));
+    ys.add(now.getFullYear());
+    return [...ys].sort();
+  },[monthMap]);
+
+  const yearTotal=MONTHS.reduce((a,_,i)=>{
+    const key=year+'-'+(i+1).toString().padStart(2,'0');
+    return a+(monthMap[key]?.pnl||0);
+  },0);
+
+  /* Max absolute value for colour intensity */
+  const maxAbs=MONTHS.reduce((a,_,i)=>{
+    const key=year+'-'+(i+1).toString().padStart(2,'0');
+    return Math.max(a,Math.abs(monthMap[key]?.pnl||0));
+  },1);
+
+  return <div style={{marginTop:28}}>
+    <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
+      <span style={{fontSize:11,color:'#555',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>Monthly P&L</span>
+      <div style={{display:'flex',alignItems:'center',gap:6,marginLeft:'auto'}}>
+        <button onClick={()=>setYear(y=>y-1)} disabled={year<=years[0]}
+          style={{background:'transparent',border:'1px solid #222',color:year<=years[0]?'#333':'#666',borderRadius:4,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>‹</button>
+        <span style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#fff',minWidth:44,textAlign:'center'}}>{year}</span>
+        <button onClick={()=>setYear(y=>y+1)} disabled={year>=years[years.length-1]}
+          style={{background:'transparent',border:'1px solid #222',color:year>=years[years.length-1]?'#333':'#666',borderRadius:4,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>›</button>
+        <span style={{fontFamily:'monospace',fontWeight:700,fontSize:13,color:yearTotal>=0?'#4ade80':'#f87171',marginLeft:8}}>{yearTotal>=0?'+':''}{yearTotal.toFixed(0)} total</span>
+      </div>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+      {MONTHS.map((mon,i)=>{
+        const key=year+'-'+(i+1).toString().padStart(2,'0');
+        const d=monthMap[key];
+        const pnl=d?.pnl||0;
+        const isFuture=new Date(year,i,1)>now;
+        const intensity=maxAbs>0?Math.min(0.9,Math.abs(pnl)/maxAbs*0.85+0.1):0;
+        const bg=!d||isFuture?'#0d0d0d':pnl>=0
+          ?`rgba(74,222,128,${intensity*0.22})`
+          :`rgba(248,113,113,${intensity*0.22})`;
+        const border=!d||isFuture?'#161616':pnl>=0
+          ?`rgba(74,222,128,${intensity*0.5})`
+          :`rgba(248,113,113,${intensity*0.5})`;
+        return <div key={mon} style={{background:bg,border:'1px solid '+border,
+          borderRadius:8,padding:'12px 14px',minHeight:80,
+          opacity:isFuture?0.3:1}}>
+          <div style={{fontSize:11,color:'#666',fontWeight:500,marginBottom:6}}>{mon}</div>
+          {d&&!isFuture
+            ?<>
+              <div style={{fontFamily:'monospace',fontWeight:700,fontSize:16,color:pnl>=0?'#4ade80':'#f87171'}}>
+                {pnl>=0?'+':''}{Math.abs(pnl)>=1000?(pnl/1000).toFixed(1)+'K':pnl.toFixed(0)}
+              </div>
+              <div style={{fontSize:11,color:'#555',marginTop:4}}>
+                {d.wins}/{d.trades} wins
+              </div>
+            </>
+            :<div style={{fontSize:12,color:'#2a2a2a',marginTop:8}}>—</div>}
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
 /* ══════════ Main App ══════════ */
 function App(){
   const [txns,setTxns]=React.useState([]);
@@ -1016,6 +1103,7 @@ function App(){
         {STRATS.filter(s=>metrics[s.v]).map(s=><StratCard key={s.v} strat={s.v} metrics={metrics[s.v]} positions={positions.filter(p=>p.strategy===s.v)} txns={txns} txnKeys={txnKeys}/>)}
       </div>
       {!Object.keys(metrics).length&&<div style={{textAlign:'center',color:'#444',padding:'40px 0',fontSize:13}}>Assign positions to strategies to see metrics</div>}
+      <MonthlyPnL positions={positions} txns={txns} txnKeys={txnKeys}/>
     </div>}
 
     {/* ── Account ── */}
