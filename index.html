@@ -52,15 +52,23 @@ var store={
 function parseLine(l){var o=[],c='',q=false;for(var i=0;i<l.length;i++){var ch=l[i];if(ch==='"')q=!q;else if(ch===','&&!q){o.push(c.trim());c='';}else c+=ch;}o.push(c.trim());return o;}
 function pn(s){return parseFloat((s||'').replace(/,/g,''))||0;}
 function parseCSV(txt){
-  var rows=[],lines=txt.split('\n').filter(function(l){return l.trim();});
+  var rows=[],money=[],lines=txt.split('\n').filter(function(l){return l.trim();});
   for(var i=1;i<lines.length;i++){
-    var v=parseLine(lines[i]);if(v.length<19)continue;
-    var ty=v[1],ac=v[3];if(['Trade','Receive Deliver'].indexOf(ty)<0||!ac)continue;
+    var v=parseLine(lines[i]);if(v.length<6)continue;
+    var ty=v[1];
+    if(ty==='Money Movement'){
+      /* Amount is in v[7] for TastyTrade CSV format */
+      var amt=pn(v[7])||pn(v[6])||pn(v[12]);
+      if(amt!==0)money.push({d:v[0].trim(),st:v[2].trim(),desc:v[6].trim()||v[13]?.trim()||'',to:amt});
+      continue;
+    }
+    if(v.length<19)continue;
+    var ac=v[3];if(['Trade','Receive Deliver'].indexOf(ty)<0||!ac)continue;
     rows.push({d:v[0].trim(),ty:ty,ac:ac,sy:v[4].trim(),q:parseInt(v[8])||0,ap:pn(v[9]),
       co:v[10]==='--'?0:pn(v[10]),fe:pn(v[11]),mu:parseInt(v[12])||1,
       rs:v[13].trim(),us:v[14].trim(),ed:v[15],sp:pn(v[16]),cp:v[17],oi:v[18].trim(),to:pn(v[19])});
   }
-  return rows;
+  return{rows:rows,money:money};
 }
 /* Key includes total so split fills with same order/symbol/qty but different fees are unique */
 function txnKey(r){return[r.d?r.d.slice(0,16):'',r.oi||'',r.sy||'',r.ac||'',r.q||0,Math.round((r.to||0)*100)].join('|');}
@@ -708,29 +716,55 @@ function PreCheck({txns,txnKeys,positions,onAccept}){
 }
 
 /* ── Account View ── */
-function AccountView({money}){
+function AccountView({money,txns,positions,txnKeys}){
+  txns=txns||[];positions=positions||[];txnKeys=txnKeys||[];
   const sorted=[...money].sort((a,b)=>a.d>b.d?-1:1);
 
   const TYPE={
-    'Deposit':       {color:'#4ade80', bg:'rgba(74,222,128,0.08)'},
-    'Credit Interest':{color:'#38bdf8', bg:'rgba(56,189,248,0.08)'},
-    'Balance Adjustment':{color:'#f87171', bg:'rgba(248,113,113,0.08)'},
-    'Withdrawal':    {color:'#fb923c', bg:'rgba(251,146,60,0.08)'},
+    'Deposit':          {color:'#4ade80',bg:'rgba(74,222,128,0.08)'},
+    'Credit Interest':  {color:'#38bdf8',bg:'rgba(56,189,248,0.08)'},
+    'Balance Adjustment':{color:'#f87171',bg:'rgba(248,113,113,0.08)'},
+    'Withdrawal':       {color:'#fb923c',bg:'rgba(251,146,60,0.08)'},
   };
 
-  const totals=sorted.reduce((acc,r)=>{
-    acc[r.st]=(acc[r.st]||0)+r.to; return acc;
-  },{});
+  /* Totals by type */
+  const totals=sorted.reduce((acc,r)=>{acc[r.st]=(acc[r.st]||0)+r.to;return acc;},{});
 
-  const totalIn =sorted.filter(r=>r.to>0).reduce((a,r)=>a+r.to,0);
-  const totalOut=sorted.filter(r=>r.to<0).reduce((a,r)=>a+r.to,0);
-  const net=totalIn+totalOut;
+  /* Commissions + fees from all trade transactions */
+  const totalComm=txns.reduce((a,t)=>a+(t.co||0),0);
+  const totalFees=txns.reduce((a,t)=>a+(t.fe||0),0);
+
+  /* Realised P&L from assigned closed positions */
+  const realised=positions.filter(p=>!isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
+  const openPrem=positions.filter(p=>isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
+
+  /* Est. account balance */
+  const moneyNet=sorted.reduce((a,r)=>a+r.to,0);
+  const estBalance=moneyNet+realised+openPrem+totalComm+totalFees;
 
   const fmtD=d=>d?new Date(d).toLocaleDateString('en-SG',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+  const fm=n=>(n>=0?'+':'')+n.toFixed(2);
 
-  return <div style={{maxWidth:900,margin:'0 auto',padding:16}}>
-    {/* Summary cards */}
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8,marginBottom:20}}>
+  return <div style={{maxWidth:960,margin:'0 auto',padding:16}}>
+    {/* Est. balance banner */}
+    <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:10,padding:'18px 22px',marginBottom:16,display:'flex',alignItems:'center',gap:32,flexWrap:'wrap'}}>
+      <div>
+        <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>Est. Account Balance</div>
+        <div style={{fontFamily:'monospace',fontWeight:700,fontSize:28,color:estBalance>=0?'#4ade80':'#f87171'}}>${estBalance.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        <div style={{fontSize:11,color:'#555',marginTop:4}}>Deposits + P&L + Interest + Fees</div>
+      </div>
+      <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
+        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Deposits</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#4ade80'}}>${(totals['Deposit']||0).toLocaleString('en',{minimumFractionDigits:2})}</div></div>
+        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Realized P&L</div><div style={{fontFamily:'monospace',fontWeight:600,color:realised>=0?'#4ade80':'#f87171'}}>{fm(realised)}</div></div>
+        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Open Premium</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#888'}}>{fm(openPrem)}</div></div>
+        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Interest</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#38bdf8'}}>{fm(totals['Credit Interest']||0)}</div></div>
+        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Commissions</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#f87171'}}>{fm(totalComm)}</div></div>
+        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Reg. Fees</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#f87171'}}>{fm(totalFees+(totals['Balance Adjustment']||0))}</div></div>
+      </div>
+    </div>
+
+    {/* Type summary cards */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8,marginBottom:16}}>
       {Object.entries(totals).map(([st,total])=>{
         const tc=TYPE[st]||{color:'#888',bg:'rgba(136,136,136,0.08)'};
         return <div key={st} style={{background:'#111',border:'1px solid #1a1a1a',borderTop:'2px solid '+tc.color,borderRadius:8,padding:'12px 14px'}}>
@@ -739,14 +773,9 @@ function AccountView({money}){
           <div style={{fontSize:11,color:'#444',marginTop:3}}>{sorted.filter(r=>r.st===st).length} entries</div>
         </div>;
       })}
-      <div style={{background:'#111',border:'1px solid #1a1a1a',borderTop:'2px solid #a78bfa',borderRadius:8,padding:'12px 14px'}}>
-        <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>Net</div>
-        <div style={{fontFamily:'monospace',fontWeight:700,fontSize:18,color:net>=0?'#4ade80':'#f87171'}}>{net>=0?'+':''}{net.toFixed(2)}</div>
-        <div style={{fontSize:11,color:'#444',marginTop:3}}>{sorted.length} total entries</div>
-      </div>
     </div>
 
-    {/* Table */}
+    {/* Transaction table */}
     <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:8,overflow:'hidden'}}>
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
         <thead>
@@ -886,7 +915,8 @@ function App(){
     (async()=>{
       const d=await store.load();
       if(d&&d.transactions&&d.transactions.length){
-        const freshKeys=d.transactions.map(txnKey);
+        if(d.money)setExtraMoney(d.money);
+      const freshKeys=d.transactions.map(txnKey);
         const oldKeys=d.txnKeys||freshKeys;
         const km={};oldKeys.forEach((ok,i)=>{if(!km[ok])km[ok]=freshKeys[i];});
         const migratedPos=(d.positions||[]).map(p=>({...p,txnKeys:p.txnKeys.map(k=>km[k]||k)}));
@@ -925,21 +955,28 @@ function App(){
 
   function showMsg(msg,type){setToast({msg,type});setTimeout(()=>setToast(null),4000);}
 
-  function saveAll(t,k,p){store.save({transactions:t,txnKeys:k,positions:p},setSyncSt);}
+  function saveAll(t,k,p,m){store.save({transactions:t,txnKeys:k,positions:p,money:m||extraMoney},setSyncSt);}
 
   async function handleImport(file){
     try{
       const text=await file.text();
-      const nr=parseCSV(text);
-      if(nr.length===0){showMsg('CSV parsed 0 rows — wrong file?','err');return;}
-      const existingKeys=txnKeys;
-      const {added}=dedup(nr,existingKeys);
-      if(!added.length){showMsg('No new transactions ('+nr.length+' in CSV, all already imported).','');return;}
+      const parsed=parseCSV(text);
+      const nr=parsed.rows; const nm=parsed.money;
+      if(nr.length===0&&nm.length===0){showMsg('CSV parsed 0 rows — wrong file?','err');return;}
+      const {added}=dedup(nr,txnKeys);
+      /* Merge new money movements (dedup by date+st+to) */
+      const moneyKey=m=>m.d?.slice(0,16)+'|'+m.st+'|'+Math.round((m.to||0)*100);
+      const existingMoneyKeys=new Set([...INIT_MONEY,...extraMoney].map(moneyKey));
+      const addedMoney=nm.filter(m=>!existingMoneyKeys.has(moneyKey(m)));
+      const newExtra=[...extraMoney,...addedMoney];
+      if(!added.length&&!addedMoney.length){showMsg('No new data ('+nr.length+' trade rows, '+nm.length+' money rows in CSV, all already imported).','');return;}
       const newTxns=[...txns,...added];
       const newKeys=newTxns.map(txnKey);
-      setTxns(newTxns);setTxnKeys(newKeys);
-      saveAll(newTxns,newKeys,positions);
-      showMsg(added.length+' new transaction'+(added.length!==1?'s':'')+' added.','ok');
+      setTxns(newTxns);setTxnKeys(newKeys);setExtraMoney(newExtra);
+      saveAll(newTxns,newKeys,positions,newExtra);
+      showMsg((added.length?added.length+' trade'+(added.length!==1?'s':''):'')+
+        (added.length&&addedMoney.length?' · ':'')+
+        (addedMoney.length?addedMoney.length+' money movement'+(addedMoney.length!==1?'s':''):'')+' added.','ok');
     }catch(e){showMsg('Import failed: '+e.message,'err');}
   }
 
@@ -1108,7 +1145,7 @@ function App(){
     </div>}
 
     {/* ── Account ── */}
-    {view==='account'&&<AccountView money={INIT_MONEY}/>}
+    {view==='account'&&<AccountView money={[...INIT_MONEY,...extraMoney]} txns={txns} positions={positions} txnKeys={txnKeys}/>}
 
     {/* ── Pre-Check ── */}
     {view==='precheck'&&<PreCheck txns={txns} txnKeys={txnKeys} positions={positions} onAccept={acceptSuggestion}/>}
