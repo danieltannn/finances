@@ -717,94 +717,102 @@ function PreCheck({txns,txnKeys,positions,onAccept}){
 
 /* ── Account View ── */
 function AccountView({money,txns,positions,txnKeys}){
-  txns=txns||[];positions=positions||[];txnKeys=txnKeys||[];
+  txns=txns||[]; positions=positions||[]; txnKeys=txnKeys||[];
   const sorted=[...money].sort((a,b)=>a.d>b.d?-1:1);
 
-  const TYPE={
-    'Deposit':          {color:'#4ade80',bg:'rgba(74,222,128,0.08)'},
-    'Credit Interest':  {color:'#38bdf8',bg:'rgba(56,189,248,0.08)'},
-    'Balance Adjustment':{color:'#f87171',bg:'rgba(248,113,113,0.08)'},
-    'Withdrawal':       {color:'#fb923c',bg:'rgba(251,146,60,0.08)'},
-  };
+  const TCOLOR={'Deposit':'#4ade80','Credit Interest':'#38bdf8','Balance Adjustment':'#f87171','Withdrawal':'#fb923c'};
 
-  /* Totals by type */
-  const totals=sorted.reduce((acc,r)=>{acc[r.st]=(acc[r.st]||0)+r.to;return acc;},{});
-
-  /* Commissions + fees from all trade transactions */
   const totalComm=txns.reduce((a,t)=>a+(t.co||0),0);
   const totalFees=txns.reduce((a,t)=>a+(t.fe||0),0);
-
-  /* Realised P&L from assigned closed positions */
+  const totalDeposits=money.filter(r=>r.st==='Deposit').reduce((a,r)=>a+r.to,0);
+  const totalInterest=money.filter(r=>r.st==='Credit Interest').reduce((a,r)=>a+r.to,0);
+  const totalAdj=money.filter(r=>r.st==='Balance Adjustment').reduce((a,r)=>a+r.to,0);
   const realised=positions.filter(p=>!isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
   const openPrem=positions.filter(p=>isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
+  const estBal=totalDeposits+totalInterest+totalAdj+realised+openPrem+totalComm+totalFees;
 
-  /* Est. account balance */
-  const moneyNet=sorted.reduce((a,r)=>a+r.to,0);
-  const estBalance=moneyNet+realised+openPrem+totalComm+totalFees;
-
+  const s=n=>(n>=0?'+':'-')+'$'+Math.abs(n).toFixed(2);
   const fmtD=d=>d?new Date(d).toLocaleDateString('en-SG',{day:'2-digit',month:'short',year:'2-digit'}):'—';
-  const fm=n=>(n>=0?'+':'')+n.toFixed(2);
+  const col=n=>n>=0?'#4ade80':'#f87171';
 
-  return <div style={{maxWidth:960,margin:'0 auto',padding:16}}>
-    {/* Est. balance banner */}
-    <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:10,padding:'18px 22px',marginBottom:16,display:'flex',alignItems:'center',gap:32,flexWrap:'wrap'}}>
-      <div>
-        <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>Est. Account Balance</div>
-        <div style={{fontFamily:'monospace',fontWeight:700,fontSize:28,color:estBalance>=0?'#4ade80':'#f87171'}}>${estBalance.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-        <div style={{fontSize:11,color:'#555',marginTop:4}}>Deposits + P&L + Interest + Fees</div>
+  const statItems=[
+    {label:'Deposits',      val:'+$'+totalDeposits.toFixed(2), color:'#4ade80'},
+    {label:'Realized P&L',  val:s(realised),                   color:col(realised)},
+    {label:'Open Premium',  val:s(openPrem),                   color:'#888'},
+    {label:'Interest',      val:'+$'+totalInterest.toFixed(2), color:'#38bdf8'},
+    {label:'Commissions',   val:'$'+totalComm.toFixed(2),      color:'#f87171'},
+    {label:'Reg. Fees',     val:'$'+(totalFees+totalAdj).toFixed(2), color:'#f87171'},
+  ];
+
+  /* Group by type for summary cards */
+  const byType={};
+  sorted.forEach(r=>{if(!byType[r.st])byType[r.st]={total:0,count:0};byType[r.st].total+=r.to;byType[r.st].count++;});
+
+  return(
+    <div style={{maxWidth:960,margin:'0 auto',padding:16}}>
+      {/* Balance banner */}
+      <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:10,padding:'18px 22px',marginBottom:16}}>
+        <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>Est. Account Balance</div>
+        <div style={{fontFamily:'monospace',fontWeight:700,fontSize:30,color:col(estBal),marginBottom:14}}>
+          {estBal>=0?'':'-'}${Math.abs(estBal).toFixed(2)}
+        </div>
+        <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
+          {statItems.map(item=>(
+            <div key={item.label}>
+              <div style={{fontSize:10,color:'#555',marginBottom:2}}>{item.label}</div>
+              <div style={{fontFamily:'monospace',fontWeight:600,fontSize:13,color:item.color}}>{item.val}</div>
+            </div>
+          ))}
+        </div>
       </div>
-      <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
-        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Deposits</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#4ade80'}}>${(totals['Deposit']||0).toLocaleString('en',{minimumFractionDigits:2})}</div></div>
-        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Realized P&L</div><div style={{fontFamily:'monospace',fontWeight:600,color:realised>=0?'#4ade80':'#f87171'}}>{fm(realised)}</div></div>
-        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Open Premium</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#888'}}>{fm(openPrem)}</div></div>
-        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Interest</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#38bdf8'}}>{fm(totals['Credit Interest']||0)}</div></div>
-        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Commissions</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#f87171'}}>{fm(totalComm)}</div></div>
-        <div><div style={{fontSize:10,color:'#555',marginBottom:3}}>Reg. Fees</div><div style={{fontFamily:'monospace',fontWeight:600,color:'#f87171'}}>{fm(totalFees+(totals['Balance Adjustment']||0))}</div></div>
+
+      {/* Type summary cards */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8,marginBottom:16}}>
+        {Object.entries(byType).map(([st,{total,count}])=>{
+          const c=TCOLOR[st]||'#888';
+          return(
+            <div key={st} style={{background:'#111',border:'1px solid #1a1a1a',borderTop:'2px solid '+c,borderRadius:8,padding:'12px 14px'}}>
+              <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{st}</div>
+              <div style={{fontFamily:'monospace',fontWeight:700,fontSize:18,color:col(total)}}>{total>=0?'+':''}{total.toFixed(2)}</div>
+              <div style={{fontSize:11,color:'#444',marginTop:3}}>{count} entries</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Table */}
+      <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:8,overflow:'hidden'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+          <thead>
+            <tr style={{borderBottom:'1px solid #1e1e1e'}}>
+              {['Date','Type','Description','Amount'].map((h,i)=>(
+                <th key={i} style={{padding:'10px 14px',textAlign:h==='Amount'?'right':'left',fontSize:10,color:'#555',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r,i)=>{
+              const c=TCOLOR[r.st]||'#888';
+              return(
+                <tr key={i} style={{borderBottom:'1px solid #0f0f0f'}}
+                  onMouseEnter={e=>e.currentTarget.style.background='#141414'}
+                  onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  <td style={{padding:'9px 14px',color:'#777',whiteSpace:'nowrap'}}>{fmtD(r.d)}</td>
+                  <td style={{padding:'9px 14px'}}>
+                    <span style={{fontSize:11,color:c,background:c+'15',border:'1px solid '+c+'44',borderRadius:3,padding:'2px 8px',whiteSpace:'nowrap'}}>{r.st}</span>
+                  </td>
+                  <td style={{padding:'9px 14px',color:'#888',fontSize:12}}>{r.desc||'—'}</td>
+                  <td style={{padding:'9px 14px',textAlign:'right',fontFamily:'monospace',fontWeight:700,color:col(r.to),whiteSpace:'nowrap'}}>
+                    {r.to>=0?'+':''}{r.to.toFixed(2)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
-
-    {/* Type summary cards */}
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8,marginBottom:16}}>
-      {Object.entries(totals).map(([st,total])=>{
-        const tc=TYPE[st]||{color:'#888',bg:'rgba(136,136,136,0.08)'};
-        return <div key={st} style={{background:'#111',border:'1px solid #1a1a1a',borderTop:'2px solid '+tc.color,borderRadius:8,padding:'12px 14px'}}>
-          <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{st}</div>
-          <div style={{fontFamily:'monospace',fontWeight:700,fontSize:18,color:total>=0?tc.color:'#f87171'}}>{total>=0?'+':''}{total.toFixed(2)}</div>
-          <div style={{fontSize:11,color:'#444',marginTop:3}}>{sorted.filter(r=>r.st===st).length} entries</div>
-        </div>;
-      })}
-    </div>
-
-    {/* Transaction table */}
-    <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:8,overflow:'hidden'}}>
-      <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-        <thead>
-          <tr style={{borderBottom:'1px solid #1e1e1e'}}>
-            {['Date','Type','Description','Amount'].map((h,i)=>(
-              <th key={i} style={{padding:'10px 14px',textAlign:h==='Amount'?'right':'left',fontSize:10,color:'#555',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((r,i)=>{
-            const tc=TYPE[r.st]||{color:'#888',bg:'transparent'};
-            return <tr key={i} style={{borderBottom:'1px solid #0f0f0f'}}
-              onMouseEnter={e=>e.currentTarget.style.background='#141414'}
-              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-              <td style={{padding:'9px 14px',color:'#777',whiteSpace:'nowrap'}}>{fmtD(r.d)}</td>
-              <td style={{padding:'9px 14px'}}>
-                <span style={{fontSize:11,color:tc.color,background:tc.bg,border:'1px solid '+tc.color+'33',borderRadius:3,padding:'2px 8px',whiteSpace:'nowrap'}}>{r.st}</span>
-              </td>
-              <td style={{padding:'9px 14px',color:'#888',fontSize:12}}>{r.desc||'—'}</td>
-              <td style={{padding:'9px 14px',textAlign:'right',fontFamily:'monospace',fontWeight:700,color:r.to>=0?'#4ade80':'#f87171',whiteSpace:'nowrap'}}>
-                {r.to>=0?'+':''}{r.to.toFixed(2)}
-              </td>
-            </tr>;
-          })}
-        </tbody>
-      </table>
-    </div>
-  </div>;
+  );
 }
 
 /* ── Monthly P&L Calendar ── */
