@@ -739,13 +739,12 @@ function AccountView({money,txns,positions,txnKeys}){
   const fmtD=d=>d?new Date(d).toLocaleDateString('en-SG',{day:'2-digit',month:'short',year:'2-digit'}):'—';
   const col=n=>n>=0?'#4ade80':'#f87171';
 
+  const tradeNet=tradeTotal/100;
   const statItems=[
-    {label:'Deposits',      val:'+$'+totalDeposits.toFixed(2), color:'#4ade80'},
-    {label:'Realized P&L',  val:s(realised),                   color:col(realised)},
-    {label:'Open Premium',  val:s(openPrem),                   color:'#888'},
-    {label:'Interest',      val:'+$'+totalInterest.toFixed(2), color:'#38bdf8'},
-    {label:'Commissions',   val:'$'+totalComm.toFixed(2),      color:'#f87171'},
-    {label:'Reg. Fees',     val:'$'+(totalFees+totalAdj).toFixed(2), color:'#f87171'},
+    {label:'Deposits',            val:s(totalDeposits), color:'#4ade80'},
+    {label:'Trades (net of fees)', val:s(tradeNet),      color:col(tradeNet)},
+    {label:'Interest',            val:s(totalInterest), color:'#38bdf8'},
+    {label:'Balance Adjustments', val:s(totalAdj),      color:'#f87171'},
   ];
 
   /* Group by type for summary cards */
@@ -768,20 +767,6 @@ function AccountView({money,txns,positions,txnKeys}){
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Type summary cards */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8,marginBottom:16}}>
-        {Object.entries(byType).map(([st,{total,count}])=>{
-          const c=TCOLOR[st]||'#888';
-          return(
-            <div key={st} style={{background:'#111',border:'1px solid #1a1a1a',borderTop:'2px solid '+c,borderRadius:8,padding:'12px 14px'}}>
-              <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{st}</div>
-              <div style={{fontFamily:'monospace',fontWeight:700,fontSize:18,color:col(total)}}>{total>=0?'+':''}{total.toFixed(2)}</div>
-              <div style={{fontSize:11,color:'#444',marginTop:3}}>{count} entries</div>
-            </div>
-          );
-        })}
       </div>
 
       {/* Table */}
