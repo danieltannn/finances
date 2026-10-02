@@ -729,7 +729,10 @@ function AccountView({money,txns,positions,txnKeys}){
   const totalAdj=money.filter(r=>r.st==='Balance Adjustment').reduce((a,r)=>a+r.to,0);
   const realised=positions.filter(p=>!isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
   const openPrem=positions.filter(p=>isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
-  const estBal=totalDeposits+totalInterest+totalAdj+realised+openPrem+totalComm+totalFees;
+  /* Cash balance = all money movements + net of every trade (to already includes commissions/fees) */
+  const moneyTotal=money.reduce((a,r)=>a+r.to,0);
+  const tradeTotal=txns.reduce((a,t)=>a+(t.to||0),0);
+  const estBal=moneyTotal+tradeTotal;
 
   const s=n=>(n>=0?'+':'-')+'$'+Math.abs(n).toFixed(2);
   const fmtD=d=>d?new Date(d).toLocaleDateString('en-SG',{day:'2-digit',month:'short',year:'2-digit'}):'—';
@@ -752,7 +755,7 @@ function AccountView({money,txns,positions,txnKeys}){
     <div style={{maxWidth:960,margin:'0 auto',padding:16}}>
       {/* Balance banner */}
       <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:10,padding:'18px 22px',marginBottom:16}}>
-        <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>Est. Account Balance</div>
+        <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>Cash Balance</div>
         <div style={{fontFamily:'monospace',fontWeight:700,fontSize:30,color:col(estBal),marginBottom:14}}>
           {estBal>=0?'':'-'}${Math.abs(estBal).toFixed(2)}
         </div>
