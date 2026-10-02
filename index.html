@@ -730,9 +730,10 @@ function AccountView({money,txns,positions,txnKeys}){
   const realised=positions.filter(p=>!isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
   const openPrem=positions.filter(p=>isOpen(p,txns,txnKeys)).reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
   /* Cash balance = all money movements + net of every trade (to already includes commissions/fees) */
-  const moneyTotal=money.reduce((a,r)=>a+r.to,0);
-  const tradeTotal=txns.reduce((a,t)=>a+(t.to||0),0);
-  const estBal=moneyTotal+tradeTotal;
+  /* Round each value to cents before summing to avoid float drift across 440 rows */
+  const moneyTotal=money.reduce((a,r)=>a+Math.round((r.to||0)*100),0);
+  const tradeTotal=txns.reduce((a,t)=>a+Math.round((t.to||0)*100),0);
+  const estBal=(moneyTotal+tradeTotal)/100;
 
   const s=n=>(n>=0?'+':'-')+'$'+Math.abs(n).toFixed(2);
   const fmtD=d=>d?new Date(d).toLocaleDateString('en-SG',{day:'2-digit',month:'short',year:'2-digit'}):'—';
