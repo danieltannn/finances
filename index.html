@@ -917,6 +917,8 @@ function App(){
   const [syncSt,setSyncSt]=React.useState('');
   const [ready,setReady]=React.useState(false);
   const [toast,setToast]=React.useState(null);
+  const [extraMoney,setExtraMoney]=React.useState([]);
+  const [tickerOpenMap,setTickerOpenMap]=React.useState({});
 
   React.useEffect(()=>{
     if(!GH_REPO||!GH_PAT)setShowSync(true);
@@ -1146,7 +1148,7 @@ function App(){
       </div>
       <div style={{fontSize:11,color:'#555',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:12}}>Strategy Breakdown</div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-        {STRATS.filter(s=>metrics[s.v]).map(s=><StratCard key={s.v} strat={s.v} metrics={metrics[s.v]} positions={positions.filter(p=>p.strategy===s.v)} txns={txns} txnKeys={txnKeys}/>)}
+        {STRATS.filter(s=>metrics[s.v]).map(s=><StratCard key={s.v} strat={s.v} metrics={metrics[s.v]} positions={positions.filter(p=>p.strategy===s.v)} txns={txns} txnKeys={txnKeys} tickerOpen={!!tickerOpenMap[s.v]} onToggleTicker={()=>setTickerOpenMap(prev=>({...prev,[s.v]:!prev[s.v]}))}/>)}
       </div>
       {!Object.keys(metrics).length&&<div style={{textAlign:'center',color:'#444',padding:'40px 0',fontSize:13}}>Assign positions to strategies to see metrics</div>}
       <MonthlyPnL positions={positions} txns={txns} txnKeys={txnKeys}/>
