@@ -968,70 +968,92 @@ function BottomNav({view,onNav}){
   );
 }
 
-/* ── Strategy table (compact, expandable rows) ── */
-function StratTable({positions,txns,txnKeys}){
+/* ── Strategy table (compact, expandable rows, $/day, ticker exclusions) ── */
+function StratTable({positions,txns,txnKeys,excl,onToggleExcl}){
+  excl=excl||{};
   const [openS,setOpenS]=React.useState(null);
   const [selTicker,setSelTicker]=React.useState(null);
   const calc=ps=>{
     const open=ps.filter(p=>isOpen(p,txns,txnKeys)), closed=ps.filter(p=>!isOpen(p,txns,txnKeys));
     const pn=closed.map(p=>posPnL(p,txns,txnKeys));
     const cpnl=pn.reduce((a,b)=>a+b,0), oprem=open.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0);
-    const dits=closed.map(p=>posDIT(p,txns,txnKeys));
-    return{total:ps.length,openCount:open.length,closedCount:closed.length,wins:pn.filter(x=>x>0).length,
-      winRate:closed.length?Math.round(pn.filter(x=>x>0).length/closed.length*100):0,
+    const dits=closed.map(p=>Math.max(1,posDIT(p,txns,txnKeys)));
+    const days=dits.reduce((a,b)=>a+b,0);
+    const wins=pn.filter(x=>x>0).length;
+    return{total:ps.length,openCount:open.length,closedCount:closed.length,wins,
+      winRate:closed.length?Math.round(wins/closed.length*100):0,
       closedPnL:cpnl,openPremium:oprem,totalPnL:cpnl+oprem,avgPnL:closed.length?cpnl/closed.length:0,
-      avgDIT:dits.length?Math.round(dits.reduce((a,b)=>a+b,0)/dits.length):0,
+      avgDIT:dits.length?Math.round(days/dits.length):0,days,dpd:days?cpnl/days:null,
       best:pn.length?Math.max(...pn):0,worst:pn.length?Math.min(...pn):0};
   };
-  const rows=STRATS.map(s=>({s,ps:positions.filter(p=>(p.strategy||'misc')===s.v)})).filter(r=>r.ps.length);
+  const rows=STRATS.map(s=>{
+    const all=positions.filter(p=>(p.strategy||'misc')===s.v);
+    const ex=excl[s.v]||[];
+    const inc=all.filter(p=>!ex.includes(posUnderlying(p,txns,txnKeys)));
+    return{s,all,ex,m:calc(inc)};
+  }).filter(r=>r.all.length)
+    .sort((a,b)=>(b.m.dpd==null?-1e9:b.m.dpd)-(a.m.dpd==null?-1e9:a.m.dpd));
   if(!rows.length)return <div style={{textAlign:'center',color:'#444',padding:'40px 0',fontSize:13}}>Assign positions to strategies to see metrics</div>;
-  const G='minmax(0,1fr) 72px 44px 50px 62px';
+  const G='minmax(0,1fr) 62px 36px 40px 54px 50px';
   const pc=n=>n>=0?'#4ade80':'#f87171';
+  const fd=n=>n==null?'—':(n>=0?'+':'-')+'$'+Math.abs(n).toFixed(2);
   const Detail=({label,value,color})=><div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #161616'}}>
     <span style={{fontSize:12,color:'#777'}}>{label}</span><span style={{fontSize:12,fontFamily:'monospace',fontWeight:600,color:color||'#aaa'}}>{value}</span></div>;
+  const num={textAlign:'right',fontFamily:'monospace',fontSize:11.5};
   return(
     <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:8,overflow:'hidden'}}>
-      <div style={{display:'grid',gridTemplateColumns:G,gap:6,padding:'9px 12px',borderBottom:'1px solid #1a1a1a',fontSize:9,color:'#555',textTransform:'uppercase',letterSpacing:'0.06em'}}>
-        <span>Strategy</span><span style={{textAlign:'right'}}>P&L</span><span style={{textAlign:'right'}}>Win%</span><span style={{textAlign:'right'}}>C / O</span><span style={{textAlign:'right'}}>Avg</span>
+      <div style={{display:'grid',gridTemplateColumns:G,gap:4,padding:'9px 10px',borderBottom:'1px solid #1a1a1a',fontSize:9,color:'#555',textTransform:'uppercase',letterSpacing:'0.05em'}}>
+        <span>Strategy</span><span style={{textAlign:'right'}}>P&L</span><span style={{textAlign:'right'}}>Win</span><span style={{textAlign:'right'}}>C/O</span><span style={{textAlign:'right'}}>Avg</span><span style={{textAlign:'right',color:'#888'}}>$/day ↓</span>
       </div>
-      {rows.map(({s,ps})=>{
-        const m=calc(ps), isOpenRow=openS===s.v;
-        /* ticker rollup */
-        const byT={};ps.forEach(p=>{const u=posUnderlying(p,txns,txnKeys);(byT[u]=byT[u]||[]).push(p);});
-        const tick=Object.entries(byT).map(([t,tp])=>({t,...calc(tp)})).sort((a,b)=>b.totalPnL-a.totalPnL);
+      {rows.map(({s,all,ex,m})=>{
+        const isOpenRow=openS===s.v;
+        const byT={};all.forEach(p=>{const u=posUnderlying(p,txns,txnKeys);(byT[u]=byT[u]||[]).push(p);});
+        const tick=Object.entries(byT).map(([t,tp])=>({t,ex:ex.includes(t),...calc(tp)})).sort((a,b)=>b.totalPnL-a.totalPnL);
         const d=isOpenRow&&selTicker&&byT[selTicker]?calc(byT[selTicker]):m;
         return(
           <div key={s.v} style={{borderBottom:'1px solid #161616'}}>
             <div onClick={()=>{setOpenS(isOpenRow?null:s.v);setSelTicker(null);}}
-              style={{display:'grid',gridTemplateColumns:G,gap:6,alignItems:'center',padding:'11px 12px',cursor:'pointer',
+              style={{display:'grid',gridTemplateColumns:G,gap:4,alignItems:'center',padding:'11px 10px',cursor:'pointer',
                 borderLeft:'3px solid '+s.color,background:isOpenRow?'#151515':'transparent'}}>
-              <span style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
+              <span style={{display:'flex',alignItems:'center',gap:5,minWidth:0}}>
                 <span style={{fontSize:8,color:'#444',transition:'transform .15s',transform:isOpenRow?'rotate(90deg)':'none'}}>▶</span>
-                <span style={{fontSize:13,fontWeight:600,color:'#fff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.label}</span>
+                <span style={{minWidth:0}}>
+                  <span style={{display:'block',fontSize:12.5,fontWeight:600,color:'#fff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.label}</span>
+                  {ex.length>0&&<span style={{display:'block',fontSize:9,color:'#fbbf24'}}>{ex.length} excluded</span>}
+                </span>
               </span>
-              <span style={{textAlign:'right',fontFamily:'monospace',fontWeight:700,fontSize:12,color:pc(m.totalPnL)}}>{fmtPnL(m.totalPnL)}</span>
-              <span style={{textAlign:'right',fontFamily:'monospace',fontSize:12,color:m.closedCount?pc(m.winRate-50):'#555'}}>{m.closedCount?m.winRate+'%':'—'}</span>
-              <span style={{textAlign:'right',fontFamily:'monospace',fontSize:12,color:'#888'}}>{m.closedCount}/{m.openCount}</span>
-              <span style={{textAlign:'right',fontFamily:'monospace',fontSize:12,color:pc(m.avgPnL)}}>{fmtPnL(m.avgPnL)}</span>
+              <span style={{...num,fontWeight:700,color:pc(m.totalPnL)}}>{fmtPnL(m.totalPnL)}</span>
+              <span style={{...num,color:m.closedCount?pc(m.winRate-50):'#555'}}>{m.closedCount?m.winRate+'%':'—'}</span>
+              <span style={{...num,color:'#888'}}>{m.closedCount}/{m.openCount}</span>
+              <span style={{...num,color:pc(m.avgPnL)}}>{fmtPnL(m.avgPnL)}</span>
+              <span style={{...num,fontWeight:700,color:m.dpd==null?'#555':pc(m.dpd)}}>{fd(m.dpd)}</span>
             </div>
             {isOpenRow&&<div style={{padding:'4px 14px 14px 17px',background:'#0e0e0e'}}>
-              {selTicker&&<div style={{fontSize:11,color:'#888',margin:'6px 0'}}>Filtered: <span style={{fontFamily:'monospace',color:'#fff'}}>{selTicker}</span>
+              {selTicker&&<div style={{fontSize:11,color:'#888',margin:'6px 0'}}>Showing only <span style={{fontFamily:'monospace',color:'#fff'}}>{selTicker}</span>
                 <button onClick={()=>setSelTicker(null)} style={{background:'none',border:'none',color:'#555',fontSize:11,cursor:'pointer',marginLeft:6}}>Clear ✕</button></div>}
               {selTicker&&<Detail label="Total P&L" value={fmtPnL(d.totalPnL)} color={pc(d.totalPnL)}/>}
+              <Detail label="$ per day held" value={fd(d.dpd)} color={d.dpd==null?'#555':pc(d.dpd)}/>
               <Detail label="Realized" value={fmtPnL(d.closedPnL)} color={pc(d.closedPnL)}/>
+              <Detail label="Total days held" value={d.days+'d'}/>
+              <Detail label="Avg hold" value={d.avgDIT+'d'}/>
               <Detail label="Open premium" value={fmtPnL(d.openPremium)} color="#888"/>
               <Detail label="Win rate" value={d.closedCount?d.wins+'/'+d.closedCount+' ('+d.winRate+'%)':'—'}/>
-              <Detail label="Avg hold" value={d.avgDIT+'d'}/>
               <Detail label="Best / Worst" value={fmtPnL(d.best)+' / '+fmtPnL(d.worst)}/>
-              <div style={{fontSize:9,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',margin:'12px 0 4px'}}>By Ticker</div>
+              <div style={{display:'flex',alignItems:'baseline',margin:'14px 0 4px'}}>
+                <span style={{fontSize:9,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em'}}>By Ticker</span>
+                <span style={{fontSize:9,color:'#444',marginLeft:'auto'}}>☑ = included in totals</span>
+              </div>
               {tick.map(r=>{const sel=r.t===selTicker;return(
-                <div key={r.t} onClick={()=>setSelTicker(sel?null:r.t)}
-                  style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:4,cursor:'pointer',
-                    background:sel?'#1c1c1c':'transparent',border:'1px solid '+(sel?'#2a2a2a':'transparent')}}>
-                  <span style={{fontFamily:'monospace',fontSize:12,color:sel?'#fff':'#ccc',width:70}}>{r.t}</span>
-                  <span style={{fontFamily:'monospace',fontSize:12,fontWeight:700,flex:1,color:pc(r.totalPnL)}}>{fmtPnL(r.totalPnL)}</span>
-                  <span style={{fontSize:11,color:'#555'}}>{r.total}t</span>
-                  <span style={{fontSize:11,width:34,textAlign:'right',color:r.closedCount?pc(r.winRate-50):'#4ade80'}}>{r.closedCount?r.winRate+'%':'open'}</span>
+                <div key={r.t} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 6px',borderRadius:4,
+                    background:sel?'#1c1c1c':'transparent',border:'1px solid '+(sel?'#2a2a2a':'transparent'),opacity:r.ex?0.45:1}}>
+                  <input type="checkbox" checked={!r.ex} onChange={()=>onToggleExcl(s.v,r.t)}
+                    style={{width:18,height:18,cursor:'pointer',accentColor:s.color,flexShrink:0}}/>
+                  <div onClick={()=>setSelTicker(sel?null:r.t)} style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0,cursor:'pointer',padding:'4px 0'}}>
+                    <span style={{fontFamily:'monospace',fontSize:12,color:sel?'#fff':'#ccc',width:60,textDecoration:r.ex?'line-through':'none'}}>{r.t}</span>
+                    <span style={{fontFamily:'monospace',fontSize:12,fontWeight:700,flex:1,color:pc(r.totalPnL)}}>{fmtPnL(r.totalPnL)}</span>
+                    <span style={{fontSize:10,color:'#555',fontFamily:'monospace'}}>{fd(r.dpd)}/d</span>
+                    <span style={{fontSize:11,width:34,textAlign:'right',color:r.closedCount?pc(r.winRate-50):'#4ade80'}}>{r.closedCount?r.winRate+'%':'open'}</span>
+                  </div>
                 </div>);})}
             </div>}
           </div>
@@ -1057,6 +1079,8 @@ function App(){
   const [ready,setReady]=React.useState(false);
   const [toast,setToast]=React.useState(null);
   const [extraMoney,setExtraMoney]=React.useState([]);
+  const [excl,setExcl]=React.useState({});
+  const exclRef=React.useRef({});
   const [tickerOpenMap,setTickerOpenMap]=React.useState({});
   const [isMobile,setIsMobile]=React.useState(()=>window.matchMedia('(max-width:700px)').matches);
   const [menuOpen,setMenuOpen]=React.useState(false);
@@ -1073,6 +1097,7 @@ function App(){
       const d=await store.load();
       if(d&&d.transactions&&d.transactions.length){
         if(d.money)setExtraMoney(d.money);
+        if(d.excl){setExcl(d.excl);exclRef.current=d.excl;}
       const freshKeys=d.transactions.map(txnKey);
         const oldKeys=d.txnKeys||freshKeys;
         const km={};oldKeys.forEach((ok,i)=>{if(!km[ok])km[ok]=freshKeys[i];});
@@ -1112,7 +1137,13 @@ function App(){
 
   function showMsg(msg,type){setToast({msg,type});setTimeout(()=>setToast(null),4000);}
 
-  function saveAll(t,k,p,m){store.save({transactions:t,txnKeys:k,positions:p,money:m||extraMoney},setSyncSt);}
+  function saveAll(t,k,p,m){store.save({transactions:t,txnKeys:k,positions:p,money:m||extraMoney,excl:exclRef.current},setSyncSt);}
+  function toggleExcl(strat,ticker){
+    const cur=exclRef.current[strat]||[];
+    const next={...exclRef.current,[strat]:cur.includes(ticker)?cur.filter(t=>t!==ticker):[...cur,ticker]};
+    exclRef.current=next;setExcl(next);
+    saveAll(txns,txnKeys,positions);
+  }
 
   async function handleImport(file){
     try{
@@ -1346,7 +1377,7 @@ function App(){
           ))}
         </div>
         <div style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>Strategies</div>
-        <StratTable positions={positions} txns={txns} txnKeys={txnKeys}/>
+        <StratTable positions={positions} txns={txns} txnKeys={txnKeys} excl={excl} onToggleExcl={toggleExcl}/>
       </div>;
     })()}
 
