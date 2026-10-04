@@ -808,21 +808,25 @@ function AccountView({money,txns,positions,txnKeys}){
 function MonthlyPnL({positions,txns,txnKeys}){
   const now=new Date();
   const [year,setYear]=React.useState(now.getFullYear());
+  const [selM,setSelM]=React.useState(null);
+  const [expPos,setExpPos]=React.useState(null);
+  const panelRef=React.useRef(null);
+  React.useEffect(()=>{if(selM&&panelRef.current)panelRef.current.scrollIntoView({behavior:'smooth',block:'start'});},[selM]);
   const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const mkey=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0');};
 
   /* Realised → month the position closed. Open premium → month the position opened. */
   const monthMap=React.useMemo(()=>{
     const m={};
-    const get=k=>(m[k]=m[k]||{real:0,trades:0,wins:0,open:0,openCount:0});
+    const get=k=>(m[k]=m[k]||{real:0,trades:0,wins:0,open:0,openCount:0,closedList:[],openList:[]});
     positions.forEach(p=>{
       const pnl=posPnL(p,txns,txnKeys);
       if(isOpen(p,txns,txnKeys)){
         const od=posOpenDate(p,txns,txnKeys);if(!od)return;
-        const b=get(mkey(od));b.open+=pnl;b.openCount++;
+        const b=get(mkey(od));b.open+=pnl;b.openCount++;b.openList.push({p,pnl,od,cd:null});
       }else{
         const cd=posCloseDate(p,txns,txnKeys);if(!cd)return;
-        const b=get(mkey(cd));b.real+=pnl;b.trades++;if(pnl>0)b.wins++;
+        const b=get(mkey(cd));b.real+=pnl;b.trades++;if(pnl>0)b.wins++;b.closedList.push({p,pnl,od:posOpenDate(p,txns,txnKeys),cd});
       }
     });
     return m;
@@ -844,9 +848,9 @@ function MonthlyPnL({positions,txns,txnKeys}){
   return <div>
     <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}>
       <div style={{display:'flex',alignItems:'center',gap:6}}>
-        <button onClick={()=>setYear(y=>y-1)} disabled={year<=years[0]} style={navBtn(year<=years[0])}>‹</button>
+        <button onClick={()=>{setYear(y=>y-1);setSelM(null);}} disabled={year<=years[0]} style={navBtn(year<=years[0])}>‹</button>
         <span style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#fff',minWidth:44,textAlign:'center'}}>{year}</span>
-        <button onClick={()=>setYear(y=>y+1)} disabled={year>=years[years.length-1]} style={navBtn(year>=years[years.length-1])}>›</button>
+        <button onClick={()=>{setYear(y=>y+1);setSelM(null);}} disabled={year>=years[years.length-1]} style={navBtn(year>=years[years.length-1])}>›</button>
       </div>
       <div style={{marginLeft:'auto',display:'flex',gap:16}}>
         <div style={{textAlign:'right'}}>
@@ -867,7 +871,8 @@ function MonthlyPnL({positions,txns,txnKeys}){
         const r=d?.real||0;
         const t=hasReal?Math.min(0.9,Math.abs(r)/maxAbs*0.85+0.1):0;
         const rgb=r>=0?'74,222,128':'248,113,113';
-        return <div key={mon} style={{background:hasReal?`rgba(${rgb},${t*0.22})`:'#0d0d0d',
+        const sel=selM===keys[i];
+        return <div key={mon} onClick={()=>{if(d){setSelM(sel?null:keys[i]);setExpPos(null);}}} style={{cursor:d?'pointer':'default',outline:sel?'2px solid #fff':'none',outlineOffset:1,background:hasReal?`rgba(${rgb},${t*0.22})`:'#0d0d0d',
           border:'1px solid '+(hasReal?`rgba(${rgb},${t*0.5})`:'#161616'),borderRadius:7,padding:'9px 10px',minHeight:70,opacity:isFuture?0.3:1}}>
           <div style={{fontSize:11,color:'#666',fontWeight:500,marginBottom:4}}>{mon}</div>
           {hasReal
@@ -881,6 +886,51 @@ function MonthlyPnL({positions,txns,txnKeys}){
     <div style={{fontSize:10,color:'#444',marginTop:10,lineHeight:1.5}}>
       Big number = realized (positions closed that month). "open" = premium on positions opened that month and still open.
     </div>
+    {selM&&monthMap[selM]&&(()=>{
+      const d=monthMap[selM];
+      const label=MONTHS[parseInt(selM.slice(5))-1]+' '+selM.slice(0,4);
+      const legs=p=>p.txnKeys.map(k=>{const i=txnKeys.indexOf(k);return i>=0?txns[i]:null;}).filter(Boolean).sort((a,b)=>a.d>b.d?1:-1);
+      const Row=({it,isOpenPos})=>{
+        const st=SMAP[it.p.strategy]||SMAP.misc, ex=expPos===it.p.id;
+        return <div style={{borderBottom:'1px solid #161616'}}>
+          <div onClick={()=>setExpPos(ex?null:it.p.id)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',cursor:'pointer',borderLeft:'3px solid '+st.color}}>
+            <span style={{fontSize:8,color:'#444',transition:'transform .15s',transform:ex?'rotate(90deg)':'none'}}>▶</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,color:'#fff',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{it.p.name}</div>
+              <div style={{fontSize:10,color:'#555',marginTop:2}}>{st.label} · {fmtShort(it.od)} → {isOpenPos?'open':fmtShort(it.cd)}</div>
+            </div>
+            <span style={{fontFamily:'monospace',fontWeight:700,fontSize:13,color:isOpenPos?'#888':pc(it.pnl)}}>{fmtPnL(it.pnl)}</span>
+          </div>
+          {ex&&<div style={{background:'#0b0b0b',padding:'4px 12px 8px 26px'}}>
+            {legs(it.p).map((t,j)=>{const isS=t.ac&&t.ac.includes('SELL');return(
+              <div key={j} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'1px solid #141414',fontSize:11}}>
+                <span style={{color:'#666',width:46,flexShrink:0}}>{fmtShort(t.d)}</span>
+                <span style={{color:isS?'#4ade80':'#f87171',width:62,flexShrink:0}}>{AC[t.ac]||t.ac}</span>
+                <span style={{color:'#888',fontFamily:'monospace',fontSize:10,flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.sy}</span>
+                <span style={{color:'#666',flexShrink:0}}>{t.q}×</span>
+                <span style={{fontFamily:'monospace',fontWeight:600,color:pc(t.to),flexShrink:0,width:62,textAlign:'right'}}>{fmtPnL(t.to)}</span>
+              </div>);})}
+          </div>}
+        </div>;
+      };
+      const Section=({title,list,total,isOpenPos})=>list.length>0&&<div style={{marginBottom:14}}>
+        <div style={{display:'flex',alignItems:'center',margin:'0 0 6px'}}>
+          <span style={{fontSize:10,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em'}}>{title} · {list.length}</span>
+          <span style={{marginLeft:'auto',fontFamily:'monospace',fontWeight:700,fontSize:12,color:isOpenPos?'#888':pc(total)}}>{fmtPnL(total)}</span>
+        </div>
+        <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:8,overflow:'hidden'}}>
+          {[...list].sort((a,b)=>(isOpenPos?a.od>b.od:a.cd>b.cd)?1:-1).map(it=><Row key={it.p.id} it={it} isOpenPos={isOpenPos}/>)}
+        </div>
+      </div>;
+      return <div ref={panelRef} style={{marginTop:18,scrollMarginTop:80}}>
+        <div style={{display:'flex',alignItems:'center',marginBottom:10}}>
+          <span style={{fontWeight:700,fontSize:15,color:'#fff'}}>{label}</span>
+          <button onClick={()=>setSelM(null)} style={{marginLeft:'auto',background:'none',border:'1px solid #222',color:'#666',borderRadius:4,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>Close ✕</button>
+        </div>
+        <Section title="Closed" list={d.closedList} total={d.real} isOpenPos={false}/>
+        <Section title="Opened · still open" list={d.openList} total={d.open} isOpenPos={true}/>
+      </div>;
+    })()}
   </div>;
 }
 
