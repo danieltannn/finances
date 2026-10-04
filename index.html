@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,viewport-fit=cover"/>
 <title>Trading Journal</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -891,6 +891,39 @@ function MonthlyPnL({positions,txns,txnKeys}){
   </div>;
 }
 
+/* ── Mobile nav icons ── */
+const NAV_ICON={
+  transactions:'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  positions:'M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+  dashboard:'M3 3v18h18M7 16v-5M12 16V8M17 16V7',
+  account:'M3 7h15a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7zM3 7l2-3h11M16 14h.01',
+  precheck:'M13 2 3 14h9l-1 8 10-12h-9l1-8z',
+};
+const NAV=[['transactions','Txns'],['positions','Positions'],['dashboard','Dash'],['account','Account'],['precheck','Pre-Check']];
+
+function BottomNav({view,onNav}){
+  return(
+    <nav style={{position:'fixed',left:0,right:0,bottom:0,zIndex:100,background:'rgba(10,10,10,0.96)',
+      backdropFilter:'blur(12px)',WebkitBackdropFilter:'blur(12px)',borderTop:'1px solid #1a1a1a',
+      display:'flex',paddingBottom:'env(safe-area-inset-bottom)'}}>
+      {NAV.map(([v,l])=>{
+        const active=view===v;
+        const c=active?(v==='precheck'?'#fbbf24':'#fff'):(v==='precheck'?'#8a6a1a':'#555');
+        return(
+          <button key={v} onClick={()=>onNav(v)}
+            style={{flex:1,background:'none',border:'none',padding:'9px 0 7px',display:'flex',flexDirection:'column',
+              alignItems:'center',gap:3,color:c,cursor:'pointer',fontFamily:'inherit'}}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active?2.2:1.8} strokeLinecap="round" strokeLinejoin="round">
+              <path d={NAV_ICON[v]}/>
+            </svg>
+            <span style={{fontSize:10,fontWeight:active?600:400}}>{l}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 /* ══════════ Main App ══════════ */
 function App(){
   const [txns,setTxns]=React.useState([]);
@@ -908,6 +941,14 @@ function App(){
   const [toast,setToast]=React.useState(null);
   const [extraMoney,setExtraMoney]=React.useState([]);
   const [tickerOpenMap,setTickerOpenMap]=React.useState({});
+  const [isMobile,setIsMobile]=React.useState(()=>window.matchMedia('(max-width:700px)').matches);
+  const [menuOpen,setMenuOpen]=React.useState(false);
+  React.useEffect(()=>{
+    const mq=window.matchMedia('(max-width:700px)');
+    const fn=e=>setIsMobile(e.matches);
+    mq.addEventListener?mq.addEventListener('change',fn):mq.addListener(fn);
+    return()=>{mq.removeEventListener?mq.removeEventListener('change',fn):mq.removeListener(fn);};
+  },[]);
 
   React.useEffect(()=>{
     if(!GH_REPO||!GH_PAT)setShowSync(true);
@@ -1038,6 +1079,8 @@ function App(){
     return r;
   },[positions,txns,txnKeys]);
 
+  const syncColor=syncSt==='synced'?'#4ade80':syncSt==='saving'?'#fbbf24':(syncSt&&syncSt.startsWith('error'))?'#f87171':GH_REPO?'#4ade80':'#555';
+  const syncLabel=syncSt==='saving'?'Saving…':syncSt==='synced'?'Synced':(syncSt&&syncSt.startsWith('error'))?'Error':GH_REPO?'Connected':'Off';
   const navBtn=(active,extra)=>({padding:'6px 14px',background:active?'#fff':'transparent',color:active?'#000':'#666',border:'1px solid '+(active?'#fff':'#222'),borderRadius:4,fontSize:13,fontWeight:active?600:400,cursor:'pointer',...(extra||{})});
 
   if(!ready)return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',flexDirection:'column',gap:12,background:'#0a0a0a'}}>
@@ -1050,7 +1093,45 @@ function App(){
   const closeIdxs=filteredIdxs.filter(i=>!txns[i]?.ac?.includes('_TO_OPEN'));
 
   return <>
-    <header style={{background:'#0a0a0a',borderBottom:'1px solid #1a1a1a',padding:'0 16px',position:'sticky',top:0,zIndex:100}}>
+    {isMobile?<>
+    <header style={{background:'rgba(10,10,10,0.96)',backdropFilter:'blur(12px)',WebkitBackdropFilter:'blur(12px)',
+      borderBottom:'1px solid #1a1a1a',position:'sticky',top:0,zIndex:100,
+      padding:'calc(env(safe-area-inset-top) + 10px) 16px 10px'}}>
+      <div style={{display:'flex',alignItems:'center',gap:12}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:16,color:'#fff'}}>Trading Journal</div>
+          <div style={{fontSize:10,color:'#555'}}>TastyTrade · x5WX56094</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:9,color:'#555',textTransform:'uppercase',letterSpacing:'0.07em'}}>Total P&L</div>
+          <div style={{fontFamily:'monospace',fontWeight:700,fontSize:15,color:totalPnL>=0?'#4ade80':'#f87171'}}>{fmtPnL(totalPnL)}</div>
+        </div>
+        <button onClick={()=>setMenuOpen(o=>!o)} aria-label="Menu"
+          style={{position:'relative',background:'transparent',border:'1px solid #222',borderRadius:6,width:38,height:38,
+            color:'#aaa',fontSize:18,lineHeight:1,cursor:'pointer',flexShrink:0}}>
+          ⋯
+          <span style={{position:'absolute',top:5,right:5,width:7,height:7,borderRadius:'50%',background:syncColor}}/>
+        </button>
+      </div>
+    </header>
+    {menuOpen&&<>
+      <div onClick={()=>setMenuOpen(false)} style={{position:'fixed',inset:0,zIndex:150}}/>
+      <div style={{position:'fixed',top:'calc(env(safe-area-inset-top) + 62px)',right:16,zIndex:151,background:'#141414',
+        border:'1px solid #262626',borderRadius:10,minWidth:220,overflow:'hidden',boxShadow:'0 8px 30px rgba(0,0,0,0.7)'}}>
+        <label style={{display:'flex',alignItems:'center',gap:10,padding:'13px 16px',color:'#fff',fontSize:14,cursor:'pointer',borderBottom:'1px solid #1e1e1e'}}>
+          <span style={{width:18,textAlign:'center'}}>↑</span> Import CSV
+          <input type="file" accept=".csv" style={{display:'none'}} onChange={e=>{if(e.target.files[0])handleImport(e.target.files[0]);e.target.value='';setMenuOpen(false);}}/>
+        </label>
+        <button onClick={()=>{setMenuOpen(false);setShowSync(true);}}
+          style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'13px 16px',background:'none',border:'none',color:'#fff',fontSize:14,cursor:'pointer',fontFamily:'inherit',textAlign:'left'}}>
+          <span style={{width:18,textAlign:'center'}}>⇆</span> GitHub Sync
+          <span style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,fontSize:11,color:syncColor}}>
+            <span style={{width:7,height:7,borderRadius:'50%',background:syncColor}}/>{syncLabel}
+          </span>
+        </button>
+      </div>
+    </>}
+  </>:<header style={{background:'#0a0a0a',borderBottom:'1px solid #1a1a1a',padding:'0 16px',position:'sticky',top:0,zIndex:100}}>
       <div style={{maxWidth:1400,margin:'0 auto',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'12px 0'}}>
         <div style={{marginRight:4}}>
           <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>Trading Journal</div>
@@ -1072,7 +1153,7 @@ function App(){
           </button>
         </div>
       </div>
-    </header>
+    </header>}
 
     {/* ── Transactions ── */}
     {view==='transactions'&&<div style={{maxWidth:1400,margin:'0 auto',padding:16}}>
@@ -1154,7 +1235,9 @@ function App(){
       existing={showModal.existing} onSave={handleSavePosition} onClose={()=>setShowModal(null)}/>}
     {showSync&&<SyncModal onClose={()=>setShowSync(false)} setSyncSt={setSyncSt}/>}
 
-    {toast&&<div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#111',
+    {isMobile&&<div style={{height:'calc(72px + env(safe-area-inset-bottom))'}}/>}
+    {isMobile&&<BottomNav view={view} onNav={v=>{setView(v);setSelected(new Set());window.scrollTo(0,0);}}/>}
+    {toast&&<div style={{position:'fixed',bottom:isMobile?'calc(84px + env(safe-area-inset-bottom))':24,left:'50%',transform:'translateX(-50%)',background:'#111',
       border:'1px solid '+(toast.type==='ok'?'#1e3a2a':toast.type==='err'?'#7f1d1d':'#222'),
       borderRadius:6,padding:'10px 18px',fontSize:13,fontWeight:600,zIndex:999,
       boxShadow:'0 4px 20px rgba(0,0,0,0.8)',maxWidth:'90vw',textAlign:'center',
