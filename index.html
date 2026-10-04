@@ -808,85 +808,78 @@ function AccountView({money,txns,positions,txnKeys}){
 function MonthlyPnL({positions,txns,txnKeys}){
   const now=new Date();
   const [year,setYear]=React.useState(now.getFullYear());
-
   const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const mkey=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0');};
 
-  /* Build month map: "YYYY-MM" → {pnl, trades, wins} */
+  /* Realised → month the position closed. Open premium → month the position opened. */
   const monthMap=React.useMemo(()=>{
     const m={};
+    const get=k=>(m[k]=m[k]||{real:0,trades:0,wins:0,open:0,openCount:0});
     positions.forEach(p=>{
-      const cd=posCloseDate(p,txns,txnKeys);
-      if(!cd)return;
-      const d=new Date(cd);
-      const key=d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0');
-      if(!m[key])m[key]={pnl:0,trades:0,wins:0};
       const pnl=posPnL(p,txns,txnKeys);
-      m[key].pnl+=pnl;
-      m[key].trades++;
-      if(pnl>0)m[key].wins++;
+      if(isOpen(p,txns,txnKeys)){
+        const od=posOpenDate(p,txns,txnKeys);if(!od)return;
+        const b=get(mkey(od));b.open+=pnl;b.openCount++;
+      }else{
+        const cd=posCloseDate(p,txns,txnKeys);if(!cd)return;
+        const b=get(mkey(cd));b.real+=pnl;b.trades++;if(pnl>0)b.wins++;
+      }
     });
     return m;
   },[positions,txns,txnKeys]);
 
-  /* Years that have data */
   const years=React.useMemo(()=>{
-    const ys=new Set(Object.keys(monthMap).map(k=>parseInt(k.slice(0,4))));
-    ys.add(now.getFullYear());
+    const ys=new Set(Object.keys(monthMap).map(k=>parseInt(k.slice(0,4))));ys.add(now.getFullYear());
     return [...ys].sort();
   },[monthMap]);
 
-  const yearTotal=MONTHS.reduce((a,_,i)=>{
-    const key=year+'-'+(i+1).toString().padStart(2,'0');
-    return a+(monthMap[key]?.pnl||0);
-  },0);
-
-  /* Max absolute value for colour intensity */
-  const maxAbs=MONTHS.reduce((a,_,i)=>{
-    const key=year+'-'+(i+1).toString().padStart(2,'0');
-    return Math.max(a,Math.abs(monthMap[key]?.pnl||0));
-  },1);
+  const keys=MONTHS.map((_,i)=>year+'-'+String(i+1).padStart(2,'0'));
+  const yrReal=keys.reduce((a,k)=>a+(monthMap[k]?.real||0),0);
+  const yrOpen=keys.reduce((a,k)=>a+(monthMap[k]?.open||0),0);
+  const maxAbs=keys.reduce((a,k)=>Math.max(a,Math.abs(monthMap[k]?.real||0)),1);
+  const short=n=>(n>=0?'+':'-')+'$'+(Math.abs(n)>=1000?(Math.abs(n)/1000).toFixed(1)+'K':Math.abs(n).toFixed(0));
+  const pc=n=>n>=0?'#4ade80':'#f87171';
+  const navBtn=dis=>({background:'transparent',border:'1px solid #222',color:dis?'#333':'#666',borderRadius:4,padding:'3px 10px',fontSize:12,cursor:dis?'default':'pointer'});
 
   return <div>
-    <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14}}>
-      <span style={{fontSize:11,color:'#555',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>Monthly P&L</span>
-      <div style={{display:'flex',alignItems:'center',gap:6,marginLeft:'auto'}}>
-        <button onClick={()=>setYear(y=>y-1)} disabled={year<=years[0]}
-          style={{background:'transparent',border:'1px solid #222',color:year<=years[0]?'#333':'#666',borderRadius:4,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>‹</button>
+    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+      <div style={{display:'flex',alignItems:'center',gap:6}}>
+        <button onClick={()=>setYear(y=>y-1)} disabled={year<=years[0]} style={navBtn(year<=years[0])}>‹</button>
         <span style={{fontFamily:'monospace',fontWeight:700,fontSize:14,color:'#fff',minWidth:44,textAlign:'center'}}>{year}</span>
-        <button onClick={()=>setYear(y=>y+1)} disabled={year>=years[years.length-1]}
-          style={{background:'transparent',border:'1px solid #222',color:year>=years[years.length-1]?'#333':'#666',borderRadius:4,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>›</button>
-        <span style={{fontFamily:'monospace',fontWeight:700,fontSize:13,color:yearTotal>=0?'#4ade80':'#f87171',marginLeft:8}}>{yearTotal>=0?'+':''}{yearTotal.toFixed(0)} total</span>
+        <button onClick={()=>setYear(y=>y+1)} disabled={year>=years[years.length-1]} style={navBtn(year>=years[years.length-1])}>›</button>
+      </div>
+      <div style={{marginLeft:'auto',display:'flex',gap:16}}>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:9,color:'#555',textTransform:'uppercase',letterSpacing:'0.06em'}}>Realized</div>
+          <div style={{fontFamily:'monospace',fontWeight:700,fontSize:13,color:pc(yrReal)}}>{fmtPnL(yrReal)}</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:9,color:'#555',textTransform:'uppercase',letterSpacing:'0.06em'}}>Open</div>
+          <div style={{fontFamily:'monospace',fontWeight:700,fontSize:13,color:'#888'}}>{fmtPnL(yrOpen)}</div>
+        </div>
       </div>
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
       {MONTHS.map((mon,i)=>{
-        const key=year+'-'+(i+1).toString().padStart(2,'0');
-        const d=monthMap[key];
-        const pnl=d?.pnl||0;
+        const d=monthMap[keys[i]];
         const isFuture=new Date(year,i,1)>now;
-        const intensity=maxAbs>0?Math.min(0.9,Math.abs(pnl)/maxAbs*0.85+0.1):0;
-        const bg=!d||isFuture?'#0d0d0d':pnl>=0
-          ?`rgba(74,222,128,${intensity*0.22})`
-          :`rgba(248,113,113,${intensity*0.22})`;
-        const border=!d||isFuture?'#161616':pnl>=0
-          ?`rgba(74,222,128,${intensity*0.5})`
-          :`rgba(248,113,113,${intensity*0.5})`;
-        return <div key={mon} style={{background:bg,border:'1px solid '+border,
-          borderRadius:7,padding:'9px 10px',minHeight:62,
-          opacity:isFuture?0.3:1}}>
-          <div style={{fontSize:11,color:'#666',fontWeight:500,marginBottom:6}}>{mon}</div>
-          {d&&!isFuture
-            ?<>
-              <div style={{fontFamily:'monospace',fontWeight:700,fontSize:13,color:pnl>=0?'#4ade80':'#f87171'}}>
-                {pnl>=0?'+':''}{Math.abs(pnl)>=1000?(pnl/1000).toFixed(1)+'K':pnl.toFixed(0)}
-              </div>
-              <div style={{fontSize:11,color:'#555',marginTop:4}}>
-                {d.wins}/{d.trades} wins
-              </div>
-            </>
-            :<div style={{fontSize:12,color:'#2a2a2a',marginTop:8}}>—</div>}
+        const hasReal=d&&d.trades>0, hasOpen=d&&d.openCount>0;
+        const r=d?.real||0;
+        const t=hasReal?Math.min(0.9,Math.abs(r)/maxAbs*0.85+0.1):0;
+        const rgb=r>=0?'74,222,128':'248,113,113';
+        return <div key={mon} style={{background:hasReal?`rgba(${rgb},${t*0.22})`:'#0d0d0d',
+          border:'1px solid '+(hasReal?`rgba(${rgb},${t*0.5})`:'#161616'),borderRadius:7,padding:'9px 10px',minHeight:70,opacity:isFuture?0.3:1}}>
+          <div style={{fontSize:11,color:'#666',fontWeight:500,marginBottom:4}}>{mon}</div>
+          {hasReal
+            ?<><div style={{fontFamily:'monospace',fontWeight:700,fontSize:13,color:pc(r)}}>{short(r)}</div>
+               <div style={{fontSize:10,color:'#555',marginTop:2}}>{d.wins}/{d.trades} wins</div></>
+            :<div style={{fontSize:12,color:'#2a2a2a'}}>—</div>}
+          {hasOpen&&<div style={{fontSize:10,color:'#888',marginTop:3,fontFamily:'monospace'}}>open {short(d.open)}</div>}
         </div>;
       })}
+    </div>
+    <div style={{fontSize:10,color:'#444',marginTop:10,lineHeight:1.5}}>
+      Big number = realized (positions closed that month). "open" = premium on positions opened that month and still open.
     </div>
   </div>;
 }
