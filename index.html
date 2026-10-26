@@ -465,7 +465,9 @@ function PositionsPanel({positions,txns,txnKeys,editPosition,deletePosition,onSt
   const [closedExp,setClosedExp]=React.useState(false);
   /* each strategy section independently collapsible */
   const [stratExp,setStratExp]=React.useState({});
+  const [tkExp,setTkExp]=React.useState({}); /* key: strat|ticker */
   const toggleStrat=v=>setStratExp(prev=>({...prev,[v]:!prev[v]}));
+  const toggleTk=key=>setTkExp(prev=>({...prev,[key]:!prev[key]}));
 
   const opens=positions.filter(p=>isOpen(p,txns,txnKeys));
   const closed=positions.filter(p=>!isOpen(p,txns,txnKeys));
@@ -523,8 +525,26 @@ function PositionsPanel({positions,txns,txnKeys,editPosition,deletePosition,onSt
               <span style={{fontSize:11,color:'#666',marginLeft:4}}>{wins}/{s.positions.length} wins</span>
               <span style={{marginLeft:'auto',fontFamily:'monospace',fontWeight:700,fontSize:13,color:spnl>=0?'#4ade80':'#f87171'}}>{fmtPnL(spnl)}</span>
             </div>
-            {isExp&&<div style={{display:'flex',flexDirection:'column',gap:6,paddingLeft:8}}>
-              {s.positions.map(card)}
+            {isExp&&<div style={{paddingLeft:8}}>
+              {(()=>{
+                const byT={};
+                s.positions.forEach(p=>{const u=posUnderlying(p,txns,txnKeys);(byT[u]=byT[u]||[]).push(p);});
+                const trows=Object.entries(byT).map(([t,ps])=>({t,ps,pnl:ps.reduce((a,p)=>a+posPnL(p,txns,txnKeys),0),
+                  wins:ps.filter(p=>posPnL(p,txns,txnKeys)>0).length})).sort((a,b)=>b.pnl-a.pnl);
+                return trows.map(({t,ps,pnl,wins})=>{
+                  const key=s.v+'|'+t, open=tkExp[key]===true;
+                  return <div key={t} style={{marginBottom:4}}>
+                    <div onClick={()=>toggleTk(key)} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',cursor:'pointer',userSelect:'none',borderRadius:5,background:'#0d0d0d',border:'1px solid #161616'}}>
+                      <span style={{fontSize:8,color:'#444',display:'inline-block',transition:'transform .15s',transform:open?'rotate(90deg)':'none'}}>▶</span>
+                      <span style={{fontFamily:'monospace',fontSize:12,fontWeight:600,color:'#ddd'}}>{t}</span>
+                      <span style={{fontSize:11,color:'#555',background:'#161616',padding:'1px 6px',borderRadius:8}}>{ps.length}</span>
+                      <span style={{fontSize:11,color:'#666'}}>{wins}/{ps.length} wins</span>
+                      <span style={{marginLeft:'auto',fontFamily:'monospace',fontWeight:700,fontSize:12,color:pnl>=0?'#4ade80':'#f87171'}}>{fmtPnL(pnl)}</span>
+                    </div>
+                    {open&&<div style={{display:'flex',flexDirection:'column',gap:6,padding:'6px 0 6px 10px'}}>{ps.map(card)}</div>}
+                  </div>;
+                });
+              })()}
             </div>}
           </div>;
         })}
