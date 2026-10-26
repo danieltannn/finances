@@ -803,7 +803,7 @@ function PreCheck({txns,txnKeys,positions,onAccept}){
 }
 
 /* ── Account View ── */
-function AccountView({money,txns,positions,txnKeys}){
+function AccountView({money,txns,positions,txnKeys,isMobile}){
   txns=txns||[]; positions=positions||[]; txnKeys=txnKeys||[];
   const sorted=[...money].sort((a,b)=>a.d>b.d?-1:1);
 
@@ -861,7 +861,7 @@ function AccountView({money,txns,positions,txnKeys}){
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
           <thead>
             <tr style={{borderBottom:'1px solid #1e1e1e'}}>
-              {['Date','Type','Description','Amount'].map((h,i)=>(
+              {(isMobile?['Date','Type','Amount']:['Date','Type','Description','Amount']).map((h,i)=>(
                 <th key={i} style={{padding:'10px 14px',textAlign:h==='Amount'?'right':'left',fontSize:10,color:'#555',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.07em'}}>{h}</th>
               ))}
             </tr>
@@ -877,7 +877,7 @@ function AccountView({money,txns,positions,txnKeys}){
                   <td style={{padding:'9px 14px'}}>
                     <span style={{fontSize:11,color:c,background:c+'15',border:'1px solid '+c+'44',borderRadius:3,padding:'2px 8px',whiteSpace:'nowrap'}}>{r.st}</span>
                   </td>
-                  <td style={{padding:'9px 14px',color:'#888',fontSize:12}}>{r.desc||'—'}</td>
+                  {!isMobile&&<td style={{padding:'9px 14px',color:'#888',fontSize:12}}>{r.desc||'—'}</td>}
                   <td style={{padding:'9px 14px',textAlign:'right',fontFamily:'monospace',fontWeight:700,color:col(r.to),whiteSpace:'nowrap'}}>
                     {r.to>=0?'+':''}{r.to.toFixed(2)}
                   </td>
@@ -1475,7 +1475,7 @@ function App(){
     </div>}
 
     {/* ── Account ── */}
-    {view==='account'&&<AccountView money={[...INIT_MONEY,...extraMoney]} txns={txns} positions={positions} txnKeys={txnKeys}/>}
+    {view==='account'&&<AccountView money={[...INIT_MONEY,...extraMoney]} txns={txns} positions={positions} txnKeys={txnKeys} isMobile={isMobile}/>}
 
     {/* ── Pre-Check ── */}
     {view==='precheck'&&<PreCheck txns={txns} txnKeys={txnKeys} positions={positions} onAccept={acceptSuggestion}/>}
